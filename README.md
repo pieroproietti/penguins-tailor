@@ -65,6 +65,7 @@ sudo make install
   **Flags:**
   - `--no-acc`: Skip installing accessory packages.
   - `--no-firm`: Skip installing firmware accessories.
+  - `--linear`: Use linear standard output without split screen TUI.
 
 ---
 

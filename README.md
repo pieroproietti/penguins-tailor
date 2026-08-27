@@ -2,11 +2,13 @@
 
 **penguins-tailor** is a standalone, lightweight tool written in Go to manage and apply system configurations, desktop environments, and themes ("costumes") to Linux distributions.
 
+`tailor` works in conjunction with costume repositories ("wardrobes") containing declarative YAML definitions, package lists, and filesystem overlays. By default, it connects to the official [penguins-wardrobe](https://github.com/pieroproietti/penguins-wardrobe) repository, but it can also work with any third-party or custom wardrobe by supplying the Git repository URL.
+
 ---
 
 ## 🚀 Features
 
-- **Get**: Download or update the costumes repository (`tailor get`).
+- **Get**: Download or update a costume repository (`tailor get`).
 - **List**: Enumerate available costumes and their descriptions (`tailor list`).
 - **Show**: Inspect detailed information and packages required by a costume (`tailor show <costume>`).
 - **Wear**: Seamlessly apply a costume to the system (`sudo tailor wear <costume>`), configuring repositories, packages, sysroot overlays, and user skel settings.
@@ -32,13 +34,13 @@ sudo make install
 ### Basic Commands
 
 - **`tailor get [url]`**
-  Clones or updates the costumes repository into `~/.wardrobe`. Defaults to `https://github.com/pieroproietti/penguins-wardrobe` if no URL is provided.
+  Clones or updates the costumes repository into `~/.wardrobe`. If no URL is specified, it defaults to the official repository (`https://github.com/pieroproietti/penguins-wardrobe`). You can also specify an alternative or third-party wardrobe repository:
   ```bash
-  # Default repository
+  # Official penguins-wardrobe repository (default)
   tailor get
 
-  # Custom repository
-  tailor get https://github.com/myuser/my-wardrobe
+  # Custom or third-party wardrobe repository
+  tailor get https://github.com/charliemartinez/penguins-wardrobe
   ```
 
 - **`tailor list`**

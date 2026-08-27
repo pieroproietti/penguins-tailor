@@ -16,6 +16,8 @@
 - **Build**: Integrated packaging tool to compile binaries and produce native distribution packages (`tailor tools build`).
 - **Distro-Aware**: Automatically identifies target distributions (Debian, Ubuntu, Arch, Alpine, Fedora, openSUSE, etc.) and generates assistance prompts if non-Debian package managers are present.
 
+> NOTE: At present, Tailor is only tested on the Debian family of distributions (Debian, Devuan, Ubuntu, and their derivatives). We have plans to expand support to Arch Linux and possibly other distributions in the future. The major hurdle is the inconsistency in package naming conventions, which we might eventually address through AI.
+
 ---
 
 ## 📦 Installation

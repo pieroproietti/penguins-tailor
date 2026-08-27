@@ -1,0 +1,27 @@
+# Binaries
+tailor
+penguins-tailor
+wardrobe
+penguins-wardrobe
+/bin/
+/dist/
+
+# Packages & Build Artifacts
+*.deb
+*.rpm
+*.pkg.tar.zst
+*.apk
+PKGBUILD
+
+# Documentation & completions generated
+docs/man/
+docs/completion/
+docs/md/
+
+# Logs
+*.log
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/

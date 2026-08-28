@@ -4,8 +4,8 @@
 package utils
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,11 +14,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type winsize struct {
@@ -41,233 +36,72 @@ func GetTerminalSize() (int, int) {
 	return 24, 80
 }
 
-// Custom Bubble Tea message types
-type actionMsg string
-type stepMsg string
-type logMsg string
-type clearLogMsg struct{}
+// SplitScreenConfig defines the structured header information for the split screen top pane.
+type SplitScreenConfig struct {
+	Icon    string
+	Atelier string
+	Costume string
+	Branch  string
+	Notes   string
+}
 
-// tuiModel is the Bubble Tea Model for the split screen layout
-type tuiModel struct {
-	icon          string
-	title         string
-	subtitle      string
+// FormatHeaderLines constructs the header lines according to layout requirements:
+// 1ª riga: Atelier: <remote/origin> (Costume: <costume>) or Costume: <costume>
+// 2ª riga: (se non su default) Branch: <branch>
+// 3ª riga: (se presente) Note: <notes>
+func FormatHeaderLines(cfg SplitScreenConfig) []string {
+	var lines []string
+
+	icon := cfg.Icon
+	if icon == "" {
+		icon = "👗"
+	}
+
+	// 1ª riga: Atelier (con eventuale costume) oppure solo Costume
+	var line1 string
+	if cfg.Atelier != "" {
+		if cfg.Costume != "" {
+			line1 = fmt.Sprintf("  %s %sAtelier:%s %s (%s)", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Atelier, cfg.Costume)
+		} else {
+			line1 = fmt.Sprintf("  %s %sAtelier:%s %s", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Atelier)
+		}
+	} else if cfg.Costume != "" {
+		line1 = fmt.Sprintf("  %s %s%s%s", icon, colorize(ColorBold+ColorWhite), cfg.Costume, colorize(ColorReset))
+	} else {
+		line1 = fmt.Sprintf("  %s", icon)
+	}
+	lines = append(lines, line1)
+
+	// 2ª riga: se non siamo su default (main/master o vuoto), Branch: <branch>
+	if cfg.Branch != "" && cfg.Branch != "main" && cfg.Branch != "master" {
+		line2 := fmt.Sprintf("     %sBranch:%s %s", colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Branch)
+		lines = append(lines, line2)
+	}
+
+	// 3ª riga: Note
+	if cfg.Notes != "" {
+		line3 := fmt.Sprintf("     %sNote:%s %s%s%s", colorize(ColorBold+ColorWhite), colorize(ColorReset), colorize(ColorDim), cfg.Notes, colorize(ColorReset))
+		lines = append(lines, line3)
+	}
+
+	return lines
+}
+
+type SplitScreen struct {
+	mu            sync.Mutex
+	active        bool
+	totalRows     int
+	totalCols     int
+	headerLines   []string
+	headerRows    int
+	maxSteps      int
+	topHeight     int // row number of current action / spinner line
+	sepRow        int // row number of separator line
+	scrollStart   int // first row of bottom scrolling region
 	completed     []string
 	currentAction string
 	startTime     time.Time
-	spinner       spinner.Model
-	viewport      viewport.Model
-	logLines      []string
-	maxLogLines   int
-	width         int
-	height        int
-	ready         bool
-	quitting      bool
-}
-
-func initialModel(icon, title, subtitle string, width, height int) tuiModel {
-	s := spinner.New()
-	s.Spinner = spinner.Spinner{
-		Frames: []string{"|", "/", "-", "\\"},
-		FPS:    100 * time.Millisecond,
-	}
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
-
-	m := tuiModel{
-		icon:        icon,
-		title:       title,
-		subtitle:    subtitle,
-		completed:   make([]string, 0),
-		startTime:   time.Now(),
-		spinner:     s,
-		logLines:    make([]string, 0),
-		maxLogLines: 1000,
-		width:       width,
-		height:      height,
-	}
-	m.recalcLayout()
-	return m
-}
-
-func (m tuiModel) Init() tea.Cmd {
-	return m.spinner.Tick
-}
-
-func (m *tuiModel) recalcLayout() {
-	if m.width <= 0 || m.height <= 0 {
-		return
-	}
-
-	headerHeight := 3
-	if m.subtitle != "" {
-		headerHeight = 4
-	}
-
-	maxSteps := 4
-	if m.height >= 30 {
-		maxSteps = 8
-	} else if m.height >= 24 {
-		maxSteps = 5
-	}
-
-	topHeight := headerHeight + maxSteps + 1 // +1 for current action line
-	separatorHeight := 1
-	vpHeight := m.height - topHeight - separatorHeight
-	if vpHeight < 3 {
-		vpHeight = 3
-	}
-
-	if !m.ready {
-		m.viewport = viewport.New(m.width, vpHeight)
-		m.viewport.SetContent(strings.Join(m.logLines, "\n"))
-		m.viewport.GotoBottom()
-		m.ready = true
-	} else {
-		m.viewport.Width = m.width
-		m.viewport.Height = vpHeight
-	}
-}
-
-func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC {
-			m.quitting = true
-			return m, tea.Quit
-		}
-		var vpCmd tea.Cmd
-		m.viewport, vpCmd = m.viewport.Update(msg)
-		cmds = append(cmds, vpCmd)
-
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.recalcLayout()
-
-	case spinner.TickMsg:
-		var spinCmd tea.Cmd
-		m.spinner, spinCmd = m.spinner.Update(msg)
-		cmds = append(cmds, spinCmd)
-
-	case actionMsg:
-		m.currentAction = string(msg)
-
-	case stepMsg:
-		m.completed = append(m.completed, string(msg))
-		m.currentAction = ""
-
-	case logMsg:
-		line := string(msg)
-		if len(m.logLines) >= m.maxLogLines {
-			m.logLines = m.logLines[len(m.logLines)-m.maxLogLines+1:]
-		}
-		m.logLines = append(m.logLines, line)
-		if m.ready {
-			m.viewport.SetContent(strings.Join(m.logLines, "\n"))
-			m.viewport.GotoBottom()
-		}
-
-	case clearLogMsg:
-		m.logLines = make([]string, 0)
-		if m.ready {
-			m.viewport.SetContent("")
-		}
-	}
-
-	return m, tea.Batch(cmds...)
-}
-
-func (m tuiModel) View() string {
-	if m.quitting || m.width <= 0 || m.height <= 0 {
-		return ""
-	}
-
-	divWidth := m.width
-	if divWidth > 72 {
-		divWidth = 72
-	}
-	divider := strings.Repeat("═", divWidth)
-	divStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
-	subStyle := lipgloss.NewStyle().Faint(true)
-
-	var topLines []string
-	topLines = append(topLines, divStyle.Render(divider))
-	topLines = append(topLines, fmt.Sprintf("  %s %s", m.icon, titleStyle.Render(m.title)))
-	if m.subtitle != "" {
-		topLines = append(topLines, fmt.Sprintf("  %s", subStyle.Render(m.subtitle)))
-	}
-	topLines = append(topLines, divStyle.Render(divider))
-
-	// Determine visible completed steps
-	maxSteps := 4
-	if m.height >= 30 {
-		maxSteps = 8
-	} else if m.height >= 24 {
-		maxSteps = 5
-	}
-
-	var visible []string
-	if len(m.completed) <= maxSteps {
-		visible = m.completed
-	} else {
-		visible = m.completed[len(m.completed)-maxSteps:]
-	}
-
-	for i := 0; i < maxSteps; i++ {
-		if i < len(visible) {
-			topLines = append(topLines, "  "+visible[i])
-		} else {
-			topLines = append(topLines, "")
-		}
-	}
-
-	// Current action / spinner line
-	if m.currentAction != "" {
-		elapsed := time.Since(m.startTime)
-		mins := int(elapsed.Minutes())
-		secs := int(elapsed.Seconds()) % 60
-		timeStr := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%02d:%02d]", mins, secs))
-		actionText := m.currentAction
-		topLines = append(topLines, fmt.Sprintf("  [%s] %s %s", m.spinner.View(), actionText, timeStr))
-	} else {
-		topLines = append(topLines, "")
-	}
-
-	topSection := strings.Join(topLines, "\n")
-
-	// Separator line
-	tag := " CONSOLE INTERATTIVA "
-	totalLen := m.width
-	if totalLen > 72 {
-		totalLen = 72
-	}
-	leftLen := 4
-	rightLen := totalLen - leftLen - len(tag)
-	if rightLen < 4 {
-		rightLen = 4
-	}
-
-	sepLine := fmt.Sprintf("%s%s%s",
-		divStyle.Render(strings.Repeat("─", leftLen)),
-		titleStyle.Render(tag),
-		divStyle.Render(strings.Repeat("─", rightLen)),
-	)
-
-	// Bottom viewport
-	vpSection := m.viewport.View()
-
-	return lipgloss.JoinVertical(lipgloss.Left, topSection, sepLine, vpSection)
-}
-
-// SplitScreen controls the active Bubble Tea TUI session
-type SplitScreen struct {
-	mu      sync.Mutex
-	program *tea.Program
-	active  bool
-	done    chan struct{}
+	stopChan      chan struct{}
 }
 
 var globalSplitScreen *SplitScreen
@@ -280,8 +114,8 @@ func GetSplitScreen() *SplitScreen {
 	return globalSplitScreen
 }
 
-// StartSplitScreen initializes the horizontal split screen TUI on terminal
-func StartSplitScreen(icon, title, subtitle string) *SplitScreen {
+// StartSplitScreenConfig initializes the native DECSTBM split screen with structured config
+func StartSplitScreenConfig(cfg SplitScreenConfig) *SplitScreen {
 	splitMu.Lock()
 	defer splitMu.Unlock()
 
@@ -291,25 +125,172 @@ func StartSplitScreen(icon, title, subtitle string) *SplitScreen {
 
 	rows, cols := GetTerminalSize()
 	if rows < 14 {
+		// Terminal too small for meaningful split screen
 		return nil
 	}
 
-	model := initialModel(icon, title, subtitle, cols, rows)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithoutCatchPanics())
+	headerLines := FormatHeaderLines(cfg)
+	headerRows := len(headerLines) + 2 // +2 for top and bottom divider lines
 
-	ss := &SplitScreen{
-		program: p,
-		active:  true,
-		done:    make(chan struct{}),
+	// Allarghiamo di un paio di righe la finestra dei passaggi completati
+	maxSteps := 6
+	if rows >= 40 {
+		maxSteps = 14
+	} else if rows >= 32 {
+		maxSteps = 10
+	} else if rows >= 24 {
+		maxSteps = 7
 	}
 
-	go func() {
-		_, _ = p.Run()
-		close(ss.done)
-	}()
+	topHeight := headerRows + maxSteps + 1
+	sepRow := topHeight + 1
+	scrollStart := sepRow + 1
+
+	// Ensure there are at least 4 lines for bottom interactive console
+	if scrollStart >= rows-3 {
+		maxSteps = rows - headerRows - 5
+		if maxSteps < 3 {
+			maxSteps = 3
+		}
+		topHeight = headerRows + maxSteps + 1
+		sepRow = topHeight + 1
+		scrollStart = sepRow + 1
+	}
+
+	ss := &SplitScreen{
+		active:        true,
+		totalRows:     rows,
+		totalCols:     cols,
+		headerLines:   headerLines,
+		headerRows:    headerRows,
+		maxSteps:      maxSteps,
+		topHeight:     topHeight,
+		sepRow:        sepRow,
+		scrollStart:   scrollStart,
+		completed:     make([]string, 0),
+		currentAction: "",
+		startTime:     time.Now(),
+		stopChan:      make(chan struct{}),
+	}
+
+	// Initial drawing of split screen layout
+	ss.drawFullLayout()
+
+	// Start background spinner updater for the status line
+	go ss.spinnerLoop()
 
 	globalSplitScreen = ss
 	return ss
+}
+
+// StartSplitScreen provides backwards compatibility with icon, title, subtitle
+func StartSplitScreen(icon, title, subtitle string) *SplitScreen {
+	return StartSplitScreenConfig(SplitScreenConfig{
+		Icon:    icon,
+		Costume: title,
+		Notes:   subtitle,
+	})
+}
+
+func (ss *SplitScreen) drawHeader() {
+	divWidth := ss.totalCols
+	if divWidth > 72 {
+		divWidth = 72
+	}
+	divider := strings.Repeat("═", divWidth)
+
+	fmt.Printf("%s%s%s\n", colorize(ColorCyan), divider, colorize(ColorReset))
+	for _, line := range ss.headerLines {
+		fmt.Printf("%s\n", line)
+	}
+	fmt.Printf("%s%s%s\n", colorize(ColorCyan), divider, colorize(ColorReset))
+}
+
+func (ss *SplitScreen) drawFullLayout() {
+	// Clear entire terminal and move to (1,1)
+	fmt.Print("\033[2J\033[1;1H")
+
+	// Draw top header
+	ss.drawHeader()
+
+	// Draw separator line at sepRow
+	ss.drawSeparator(ss.sepRow, ss.totalCols)
+
+	// Set DECSTBM scrolling region for the bottom area
+	fmt.Printf("\033[%d;%dr", ss.scrollStart, ss.totalRows)
+
+	// Position cursor in the bottom scrolling region
+	fmt.Printf("\033[%d;1H", ss.scrollStart)
+}
+
+func (ss *SplitScreen) drawSeparator(row, cols int) {
+	tag := " CONSOLE INTERATTIVA "
+	totalLen := cols
+	if totalLen > 72 {
+		totalLen = 72
+	}
+	leftLen := 4
+	rightLen := totalLen - leftLen - len(tag)
+	if rightLen < 4 {
+		rightLen = 4
+	}
+
+	sepLine := fmt.Sprintf("%s%s%s%s%s%s%s",
+		colorize(ColorCyan),
+		strings.Repeat("─", leftLen),
+		colorize(ColorBold+ColorWhite),
+		tag,
+		colorize(ColorReset+ColorCyan),
+		strings.Repeat("─", rightLen),
+		colorize(ColorReset),
+	)
+
+	// Save cursor, draw separator at row, restore cursor
+	fmt.Printf("\0337\033[%d;1H\033[2K%s\0338", row, sepLine)
+}
+
+func (ss *SplitScreen) spinnerLoop() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	idx := 0
+
+	for {
+		select {
+		case <-ss.stopChan:
+			return
+		case <-ticker.C:
+			ss.mu.Lock()
+			if !ss.active {
+				ss.mu.Unlock()
+				return
+			}
+			action := ss.currentAction
+			if action == "" {
+				ss.mu.Unlock()
+				continue
+			}
+
+			frame := asciiSpinnerFrames[idx%len(asciiSpinnerFrames)]
+			idx++
+			elapsed := time.Since(ss.startTime)
+			row := ss.topHeight
+			ss.mu.Unlock()
+
+			mins := int(elapsed.Minutes())
+			secs := int(elapsed.Seconds()) % 60
+			timeStr := fmt.Sprintf("[%02d:%02d]", mins, secs)
+
+			line := fmt.Sprintf("  %s[%s%s%s]%s %s %s%s%s",
+				colorize(ColorCyan),
+				colorize(ColorBold+ColorWhite), frame, colorize(ColorReset+ColorCyan),
+				colorize(ColorReset),
+				action,
+				colorize(ColorDim), timeStr, colorize(ColorReset))
+
+			// DEC Save cursor, move to spinner row, clear line, write text, DEC Restore cursor
+			fmt.Printf("\0337\033[%d;1H\033[2K%s\0338", row, line)
+		}
+	}
 }
 
 // IsActive reports whether the TUI split screen is currently running
@@ -322,16 +303,17 @@ func (ss *SplitScreen) IsActive() bool {
 	return ss.active
 }
 
-// AddStep appends a completed step to the top pane
+// AddStep appends a completed step to the top pane and refreshes the status view
 func (ss *SplitScreen) AddStep(step string) {
 	if ss == nil {
 		return
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	if ss.active && ss.program != nil {
-		ss.program.Send(stepMsg(step))
-	}
+
+	ss.completed = append(ss.completed, step)
+	ss.currentAction = ""
+	ss.redrawStatusLocked()
 }
 
 // SetAction sets the current action description shown on the animated spinner line
@@ -341,27 +323,50 @@ func (ss *SplitScreen) SetAction(format string, a ...interface{}) {
 	}
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
-	if ss.active && ss.program != nil {
-		ss.program.Send(actionMsg(fmt.Sprintf(format, a...)))
-	}
+
+	ss.currentAction = fmt.Sprintf(format, a...)
 }
 
-// Log sends a line of output to the bottom interactive console
-func (ss *SplitScreen) Log(line string) {
-	if ss == nil {
-		return
+func (ss *SplitScreen) redrawStatusLocked() {
+	startRow := ss.headerRows + 1
+	maxVisible := ss.maxSteps
+
+	// Determine which completed steps to display
+	var visible []string
+	if len(ss.completed) <= maxVisible {
+		visible = ss.completed
+	} else {
+		visible = ss.completed[len(ss.completed)-maxVisible:]
 	}
-	ss.mu.Lock()
-	defer ss.mu.Unlock()
-	if ss.active && ss.program != nil {
-		ss.program.Send(logMsg(line))
+
+	// Buffer all redraw operations
+	var sb strings.Builder
+	sb.WriteString("\0337") // save cursor
+
+	for i := 0; i < maxVisible; i++ {
+		row := startRow + i
+		sb.WriteString(fmt.Sprintf("\033[%d;1H\033[2K", row))
+		if i < len(visible) {
+			sb.WriteString("  " + visible[i])
+		}
 	}
+
+	// Clear current action row
+	sb.WriteString(fmt.Sprintf("\033[%d;1H\033[2K", ss.topHeight))
+	sb.WriteString("\0338") // restore cursor
+
+	fmt.Print(sb.String())
 }
 
-// ExecStream runs a shell command and streams stdout and stderr line-by-line
-// to the bottom interactive console and to the log file.
-func (ss *SplitScreen) ExecStream(command string, logFilePath string) error {
+// ExecInteractive temporarily suspends the split screen margins for a full-screen
+// interactive command, then restores the split screen layout upon completion.
+func (ss *SplitScreen) ExecInteractive(command string, logFilePath string) error {
 	ensureRootPath()
+
+	ss.mu.Lock()
+	// Reset scroll region to full screen
+	fmt.Print("\033[r\033[2J\033[1;1H")
+	ss.mu.Unlock()
 
 	var f *os.File
 	if logFilePath != "" {
@@ -370,82 +375,33 @@ func (ss *SplitScreen) ExecStream(command string, logFilePath string) error {
 				f = file
 				defer f.Close()
 				timestamp := time.Now().Format("2006-01-02 15:04:05")
-				f.WriteString(fmt.Sprintf("[%s] EXEC: %s\n", timestamp, command))
-			}
-		}
-	}
-
-	cmd := exec.Command("sh", "-c", command)
-	r, w, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stdout = w
-	cmd.Stderr = w
-
-	if err := cmd.Start(); err != nil {
-		w.Close()
-		r.Close()
-		return err
-	}
-	w.Close()
-
-	scanner := bufio.NewScanner(r)
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if f != nil {
-			f.WriteString(line + "\n")
-		}
-		ss.Log(line)
-	}
-	r.Close()
-
-	return cmd.Wait()
-}
-
-// ExecInteractive temporarily suspends the TUI, hands over full terminal I/O
-// to the interactive command (e.g. Debconf dialog/readline prompts), and
-// restores the TUI cleanly upon completion.
-func (ss *SplitScreen) ExecInteractive(command string, logFilePath string) error {
-	ensureRootPath()
-
-	if logFilePath != "" {
-		if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err == nil {
-			if f, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-				timestamp := time.Now().Format("2006-01-02 15:04:05")
 				f.WriteString(fmt.Sprintf("[%s] EXEC (INTERACTIVE): %s\n", timestamp, command))
-				f.Close()
 			}
 		}
 	}
-
-	ss.mu.Lock()
-	if ss.program != nil {
-		_ = ss.program.ReleaseTerminal()
-	}
-	ss.mu.Unlock()
 
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if f != nil {
+		cmd.Stdout = io.MultiWriter(os.Stdout, f)
+		cmd.Stderr = io.MultiWriter(os.Stderr, f)
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	err := cmd.Run()
 
 	ss.mu.Lock()
-	if ss.program != nil {
-		_ = ss.program.RestoreTerminal()
-		rows, cols := GetTerminalSize()
-		ss.program.Send(tea.WindowSizeMsg{Width: cols, Height: rows})
+	if ss.active {
+		ss.drawFullLayout()
+		ss.redrawStatusLocked()
 	}
 	ss.mu.Unlock()
 
 	return err
 }
 
-// Close finishes the split screen TUI and restores standard terminal state
+// Close finishes the split screen, restores scrolling margins and moves cursor to bottom
 func (ss *SplitScreen) Close() {
 	if ss == nil {
 		return
@@ -456,21 +412,17 @@ func (ss *SplitScreen) Close() {
 		return
 	}
 	ss.active = false
-	if ss.program != nil {
-		ss.program.Quit()
-	}
+	close(ss.stopChan)
 	ss.mu.Unlock()
-
-	// Wait for program to exit cleanly
-	select {
-	case <-ss.done:
-	case <-time.After(500 * time.Millisecond):
-		if ss.program != nil {
-			ss.program.Kill()
-		}
-	}
 
 	splitMu.Lock()
 	globalSplitScreen = nil
 	splitMu.Unlock()
+
+	// Reset DECSTBM scrolling region to full screen
+	fmt.Print("\033[r")
+	// Move cursor to bottom row and output newline
+	fmt.Printf("\033[%d;1H\n", ss.totalRows)
+	// Show cursor
+	fmt.Print("\033[?25h")
 }

@@ -23,14 +23,9 @@ func ensureRootPath() {
 	}
 }
 
-// Exec esegue un comando sh. Se la TUI SplitScreen è attiva, fa lo streaming
-// nel viewport della console interattiva, altrimenti mostra l'output sul terminale.
+// Exec esegue un comando sh e mostra l'output in tempo reale sul terminale.
 func Exec(command string) error {
 	ensureRootPath()
-
-	if ss := GetSplitScreen(); ss != nil && ss.IsActive() {
-		return ss.ExecStream(command, "")
-	}
 
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Stdin = os.Stdin
@@ -39,14 +34,10 @@ func Exec(command string) error {
 	return cmd.Run()
 }
 
-// ExecTee esegue un comando sh inviando stdout e stderr sia alla TUI (o terminale)
-// sia al file di log specificato.
+// ExecTee esegue un comando sh con stdin interattivo, inviando stdout e stderr
+// sia al terminale (o alla scrolling region DECSTBM) sia al file di log specificato.
 func ExecTee(command string, logFilePath string) error {
 	ensureRootPath()
-
-	if ss := GetSplitScreen(); ss != nil && ss.IsActive() {
-		return ss.ExecStream(command, logFilePath)
-	}
 
 	if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err != nil {
 		// fallback
@@ -68,9 +59,9 @@ func ExecTee(command string, logFilePath string) error {
 	return cmd.Run()
 }
 
-// ExecInteractive esegue un comando interattivo che necessita dell'intero terminale
-// (ad esempio prompt Debconf dialog/readline o conferme licenza).
-// Se la TUI è attiva, la sospende temporaneamente e la ripristina al termine.
+// ExecInteractive esegue un comando interattivo. Se lo split screen è attivo,
+// rilascia temporaneamente lo scroll region per consentire eventuale full-screen curses/dialog,
+// e al termine lo ripristina.
 func ExecInteractive(command string, logFilePath string) error {
 	ensureRootPath()
 

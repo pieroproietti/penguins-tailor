@@ -79,15 +79,24 @@ func Fatal(format string, a ...interface{}) {
 
 const sectionDivider = "============================================================"
 
-// PrintBanner stampa un'intestazione principale incorniciata
-func PrintBanner(icon, title, subtitle string) {
+// PrintBannerConfig stampa un'intestazione principale incorniciata con configurazione strutturata
+func PrintBannerConfig(cfg SplitScreenConfig) {
+	lines := FormatHeaderLines(cfg)
 	fmt.Println()
 	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
-	fmt.Printf("  %s %s%s%s\n", icon, colorize(ColorBold+ColorWhite), title, colorize(ColorReset))
-	if subtitle != "" {
-		fmt.Printf("  %s%s%s\n", colorize(ColorDim), subtitle, colorize(ColorReset))
+	for _, l := range lines {
+		fmt.Printf("%s\n", l)
 	}
 	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
+}
+
+// PrintBanner stampa un'intestazione principale incorniciata
+func PrintBanner(icon, title, subtitle string) {
+	PrintBannerConfig(SplitScreenConfig{
+		Icon:    icon,
+		Costume: title,
+		Notes:   subtitle,
+	})
 }
 
 // PrintSection stampa un separatore di sezione principale

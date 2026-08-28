@@ -74,34 +74,41 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	activeBranch := GetWardrobeBranch()
 
 	icon := "👗"
-	title := fmt.Sprintf("COSTUME: %s", suit.Name)
+	costumeLabel := fmt.Sprintf("COSTUME: %s", suit.Name)
 	if suit.Release != "" {
-		title = fmt.Sprintf("COSTUME: %s (v%s)", suit.Name, suit.Release)
+		costumeLabel = fmt.Sprintf("COSTUME: %s (v%s)", suit.Name, suit.Release)
 	}
 	if isDirectAccessory {
 		icon = "👝"
-		title = fmt.Sprintf("ACCESSORY: %s", suit.Name)
+		costumeLabel = fmt.Sprintf("ACCESSORY: %s", suit.Name)
 	}
-	if origin != "" {
-		if activeBranch != "" && activeBranch != "main" && activeBranch != "master" {
-			title = fmt.Sprintf("%s - atelier: %s (%s)", title, origin, activeBranch)
+
+	notes := suit.Description
+	if findPreseed(costumeDir) != "" {
+		if notes != "" {
+			notes += " - Preseed applied"
 		} else {
-			title = fmt.Sprintf("%s - atelier: %s", title, origin)
+			notes = "Preseed applied"
 		}
 	}
-	if findPreseed(costumeDir) != "" {
-		title += ". Preseed applied"
+
+	headerCfg := utils.SplitScreenConfig{
+		Icon:    icon,
+		Atelier: origin,
+		Costume: costumeLabel,
+		Branch:  activeBranch,
+		Notes:   notes,
 	}
 
 	var ss *utils.SplitScreen
 	if !linear {
-		ss = utils.StartSplitScreen(icon, title, suit.Description)
+		ss = utils.StartSplitScreenConfig(headerCfg)
 		if ss != nil {
 			defer ss.Close()
 		}
 	}
 	if ss == nil {
-		utils.PrintBanner(icon, title, suit.Description)
+		utils.PrintBannerConfig(headerCfg)
 	}
 
 	// DKMS safety: ensure headers for running kernel are present

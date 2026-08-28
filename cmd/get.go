@@ -11,7 +11,7 @@ func getCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "get [url]",
-		Short: "Download or update the costumes repository",
+		Short: "clone or pull atelier repository in ./wardrobe",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			url := repoURL
@@ -22,8 +22,8 @@ func getCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&repoURL, "url", "u", "", "URL of the costumes repository")
-	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch of the costumes repository")
+	cmd.Flags().StringVarP(&repoURL, "url", "u", "", "URL of the atelier repository")
+	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch of the atelier repository")
 
 	return cmd
 }

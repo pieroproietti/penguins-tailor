@@ -86,7 +86,62 @@ func loadSuit(yamlFile string) (*Suit, error) {
 		return nil, err
 	}
 	suit.normalize()
+
+	// Auto-discovery: se nella cartella è presente packages.yaml o packages.yml,
+	// carica e fonde automaticamente i pacchetti nell'elenco suit.Packages
+	dir := filepath.Dir(yamlFile)
+	if extraPkgs := loadPackagesYaml(dir); len(extraPkgs) > 0 {
+		seen := make(map[string]struct{}, len(suit.Packages)+len(extraPkgs))
+		for _, p := range suit.Packages {
+			seen[p] = struct{}{}
+		}
+		for _, p := range extraPkgs {
+			if _, exists := seen[p]; !exists {
+				seen[p] = struct{}{}
+				suit.Packages = append(suit.Packages, p)
+			}
+		}
+	}
+
 	return &suit, nil
+}
+
+// loadPackagesYaml cerca e carica packages.yaml o packages.yml nella cartella indicata
+func loadPackagesYaml(dir string) []string {
+	for _, name := range []string{"packages.yaml", "packages.yml"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		// Prova parsing con struttura standard YAML (packages: o sequence.packages:)
+		var doc struct {
+			Packages []string `yaml:"packages"`
+			Sequence *struct {
+				Packages []string `yaml:"packages"`
+			} `yaml:"sequence"`
+		}
+		if err := yaml.Unmarshal(data, &doc); err == nil {
+			var pkgs []string
+			if len(doc.Packages) > 0 {
+				pkgs = append(pkgs, doc.Packages...)
+			}
+			if doc.Sequence != nil && len(doc.Sequence.Packages) > 0 {
+				pkgs = append(pkgs, doc.Sequence.Packages...)
+			}
+			if len(pkgs) > 0 {
+				return pkgs
+			}
+		}
+
+		// Prova parsing come lista semplice di stringhe (- pkg1 \n - pkg2)
+		var list []string
+		if err := yaml.Unmarshal(data, &list); err == nil && len(list) > 0 {
+			return list
+		}
+	}
+	return nil
 }
 
 func getAvailablePackages() map[string]struct{} {
@@ -328,12 +383,11 @@ func installBatchWithFallback(batch []string, retries int, flags string) []strin
 
 // isPackageInstalled reports whether dpkg considers pkg to be correctly and fully installed.
 func isPackageInstalled(pkg string) bool {
-	installed, err := currentlyInstalledPackages()
+	out, err := exec.Command("dpkg-query", "-W", "-f=${db:Status-Status}", normalizePkgName(pkg)).Output()
 	if err != nil {
 		return false
 	}
-	_, ok := installed[normalizePkgName(pkg)]
-	return ok
+	return strings.TrimSpace(string(out)) == "installed"
 }
 
 // installInteractive installs packages without suppressing debconf prompts.
@@ -387,34 +441,6 @@ func installInteractive(packages []string) []string {
 		return append(missing, stillFailing...)
 	}
 	return missing
-}
-
-// removePackages removes packages that the vendor does not want on the system.
-func removePackages(packages []string) {
-	if len(packages) == 0 {
-		return
-	}
-
-	kernel := currentKernelPackage()
-	var safe []string
-	for _, p := range packages {
-		if kernel != "" && normalizePkgName(p) == kernel {
-			logToFile(fmt.Sprintf("⚠️  Refusing to remove the running kernel package: %s", p))
-			continue
-		}
-		safe = append(safe, p)
-	}
-	if len(safe) == 0 {
-		return
-	}
-
-	pkgString := strings.Join(safe, " ")
-	cmd := fmt.Sprintf("DEBIAN_FRONTEND=readline apt-get remove -o Dpkg::Options::='--force-confold' -y %s", pkgString)
-	logToFile(fmt.Sprintf("Removing packages: %s", pkgString))
-	if err := utils.ExecTee(cmd, tailorLogFile); err != nil {
-		logToFile(fmt.Sprintf("⚠️  Some packages could not be removed: %v", err))
-	}
-	_ = utils.ExecTee("DEBIAN_FRONTEND=readline apt-get autoremove -o Dpkg::Options::='--force-confold' -y", tailorLogFile)
 }
 
 func printAiPrompt(packages []string) {

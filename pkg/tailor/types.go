@@ -24,20 +24,11 @@ type Suit struct {
 	Finalize             *Finalize     `yaml:"finalize"`
 	Reboot               bool          `yaml:"reboot"`
 	DisplayManagerNotice bool          `yaml:"display_manager_notice"`
-	// PackagesInstallFile points to a file (relative to the costume dir)
-	// listing packages to install (plain, YAML-style or dpkg -l format).
-	PackagesInstallFile string `yaml:"packages_install_file"`
-	// PackagesRemoveFile points to a file (relative to the costume dir)
-	// listing packages that must be purged after installation.
-	PackagesRemoveFile string `yaml:"packages_remove_file"`
 	PackagesNoRecommends []string `yaml:"-"`
 	// Popolato da normalize() a partire da Sequence.PackagesInteractive.
 	// These packages are installed without DEBIAN_FRONTEND=noninteractive
 	// so the user can respond to license prompts and debconf questions.
 	PackagesInteractive []string `yaml:"-"`
-	// Populated from Sequence.PackagesRemove.
-	// Removed after all packages are installed.
-	PackagesRemove []string `yaml:"-"`
 }
 
 // Sequence raccoglie repository, pacchetti e accessori nella forma annidata.
@@ -46,7 +37,6 @@ type Sequence struct {
 	Packages                    []string      `yaml:"packages"`
 	PackagesNoInstallRecommends []string      `yaml:"packages_no_install_recommends"`
 	PackagesInteractive         []string      `yaml:"packages_interactive"`
-	PackagesRemove              []string      `yaml:"packages_remove"`
 	Accessories                 []string      `yaml:"accessories"`
 	Cmds                        []string      `yaml:"cmds"`
 }
@@ -72,7 +62,6 @@ func (s *Suit) normalize() {
 		s.Cmds = append(s.Cmds, s.Sequence.Cmds...)
 		s.PackagesNoRecommends = append(s.PackagesNoRecommends, s.Sequence.PackagesNoInstallRecommends...)
 		s.PackagesInteractive = append(s.PackagesInteractive, s.Sequence.PackagesInteractive...)
-		s.PackagesRemove = append(s.PackagesRemove, s.Sequence.PackagesRemove...)
 	}
 	if s.Finalize != nil {
 		s.Cmds = append(s.Cmds, s.Finalize.Cmds...)

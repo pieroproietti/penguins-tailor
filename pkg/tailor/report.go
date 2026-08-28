@@ -15,9 +15,7 @@ import (
 type wearReport struct {
 	CostumeName   string
 	Installed     []string
-	Purged        []string
 	FailedInstall []string
-	FailedPurge   []string
 }
 
 // writeWearReport writes the detailed, per-package outcome of a tailor
@@ -51,9 +49,7 @@ func writeWearReport(r wearReport) (string, error) {
 	}
 
 	section("Installed", r.Installed)
-	section("Removed", r.Purged)
 	section("Could NOT be installed", r.FailedInstall)
-	section("Could NOT be removed", r.FailedPurge)
 
 	if err := w.Flush(); err != nil {
 		return "", err

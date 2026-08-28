@@ -113,3 +113,51 @@ accessories:
 		t.Errorf("unexpected accessories: %v", suit.Accessories)
 	}
 }
+
+func TestLoadSuit_PackagesYamlAutoDiscovery(t *testing.T) {
+	tempDir := t.TempDir()
+	costumeDir := filepath.Join(tempDir, "test-accessory")
+	if err := os.MkdirAll(costumeDir, 0755); err != nil {
+		t.Fatalf("failed to create costume dir: %v", err)
+	}
+
+	// Main metadata file without packages:
+	yamlContent := `name: test-accessory
+description: An accessory with separate packages.yaml
+release: "1.0"
+`
+	yamlPath := filepath.Join(costumeDir, "debian.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write debian.yaml: %v", err)
+	}
+
+	// Separate packages.yaml
+	packagesContent := `packages:
+  - ardour
+  - audacity
+  - sox
+`
+	packagesPath := filepath.Join(costumeDir, "packages.yaml")
+	if err := os.WriteFile(packagesPath, []byte(packagesContent), 0644); err != nil {
+		t.Fatalf("failed to write packages.yaml: %v", err)
+	}
+
+	suit, err := loadSuit(yamlPath)
+	if err != nil {
+		t.Fatalf("loadSuit failed: %v", err)
+	}
+
+	if suit.Name != "test-accessory" {
+		t.Errorf("expected name 'test-accessory', got %q", suit.Name)
+	}
+	if len(suit.Packages) != 3 {
+		t.Fatalf("expected 3 packages from auto-discovered packages.yaml, got %d: %v", len(suit.Packages), suit.Packages)
+	}
+	expected := []string{"ardour", "audacity", "sox"}
+	for i, exp := range expected {
+		if suit.Packages[i] != exp {
+			t.Errorf("expected package %q at index %d, got %q", exp, i, suit.Packages[i])
+		}
+	}
+}
+

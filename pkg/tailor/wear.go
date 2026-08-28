@@ -190,43 +190,11 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		}
 	}
 
-	var purgedPackages []string
-	var failedPurges []string
-
-	installedBefore, _ := currentlyInstalledPackages()
-
-	// Deterministic removal: purge unwanted packages if declared
-	var removeList []string
-	removeList = append(removeList, suit.PackagesRemove...)
-	if removePath := findPackageListFile(costumeDir, suit.PackagesRemoveFile); removePath != "" {
-		if fileRemove, err := loadPackageList(removePath); err == nil {
-			removeList = append(removeList, fileRemove...)
-		}
-	}
-	if len(removeList) > 0 {
-		if ss != nil {
-			ss.SetAction("Purging %d packages...", len(removeList))
-		}
-		purgeExplicit(removeList)
-		if ss != nil {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Purge completed (%d packages)", utils.ColorGreen, utils.ColorReset, len(removeList)))
-		}
-	}
-
 	// DKMS healing
 	if ss != nil {
 		ss.SetAction("Healing DKMS state...")
 	}
 	failedPackages = healAndRetryFailed(failedPackages)
-
-	installedAfter, _ := currentlyInstalledPackages()
-	if len(installedBefore) > 0 && len(installedAfter) > 0 {
-		for p := range installedBefore {
-			if _, ok := installedAfter[p]; !ok {
-				purgedPackages = append(purgedPackages, p)
-			}
-		}
-	}
 
 	// User environment synchronization
 	targetUser := getTargetUsername()
@@ -249,9 +217,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	reportPath, reportErr := writeWearReport(wearReport{
 		CostumeName:   suit.Name,
 		Installed:     installedPackages,
-		Purged:        purgedPackages,
 		FailedInstall: failedPackages,
-		FailedPurge:   failedPurges,
 	})
 
 	summaryRows := [][2]string{
@@ -266,7 +232,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	}
 	summaryRows = append(summaryRows,
 		[2]string{"Pacchetti installati", fmt.Sprintf("%d", len(installedPackages))},
-		[2]string{"Pacchetti rimossi", fmt.Sprintf("%d", len(purgedPackages))},
 		[2]string{"Non installati", fmt.Sprintf("%d", len(failedPackages))},
 	)
 	if reportErr == nil {
@@ -450,26 +415,6 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		}
 	}
 
-	// External install file
-	if installPath := findPackageListFile(dir, suit.PackagesInstallFile); installPath != "" {
-		if filePackages, err := loadPackageList(installPath); err == nil {
-			if ss != nil {
-				ss.SetAction("Installing %d packages from external file (%s)...", len(filePackages), filepath.Base(installPath))
-			}
-			failed := installWithRetries(filePackages, 3)
-			failedPackages = append(failedPackages, failed...)
-			installed := diffStr(filePackages, failed)
-			installedPackages = append(installedPackages, installed...)
-			if ss != nil {
-				if len(failed) > 0 {
-					ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d external packages (%d failed)", utils.ColorYellow, utils.ColorReset, len(installed), len(failed)))
-				} else {
-					ss.AddStep(fmt.Sprintf("%s[OK]%s External file packages installed (%d packages)", utils.ColorGreen, utils.ColorReset, len(installed)))
-				}
-			}
-		}
-	}
-
 	// Packages No Recommends
 	if len(suit.PackagesNoRecommends) > 0 {
 		if ss != nil {
@@ -503,17 +448,6 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 			} else {
 				ss.AddStep(fmt.Sprintf("%s[OK]%s Interactive packages configured", utils.ColorGreen, utils.ColorReset))
 			}
-		}
-	}
-
-	// Packages Remove
-	if len(suit.PackagesRemove) > 0 {
-		if ss != nil {
-			ss.SetAction("Removing %d unwanted packages...", len(suit.PackagesRemove))
-		}
-		removePackages(suit.PackagesRemove)
-		if ss != nil {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Unwanted packages removed (%d packages)", utils.ColorGreen, utils.ColorReset, len(suit.PackagesRemove)))
 		}
 	}
 

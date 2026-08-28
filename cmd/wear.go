@@ -9,16 +9,18 @@ func wearCmd() *cobra.Command {
 	var noAcc bool
 	var noFirm bool
 	var linear bool
+	var branch string
 
 	cmd := &cobra.Command{
 		Use:   "wear [costume]",
 		Short: "Wear a costume from the wardrobe",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return tailor.Wear(args[0], noAcc, noFirm, linear)
+			return tailor.Wear(args[0], noAcc, noFirm, linear, branch)
 		},
 	}
 
+	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch of the costumes repository")
 	cmd.Flags().BoolVar(&noAcc, "no-acc", false, "Do not install accessories")
 	cmd.Flags().BoolVar(&noFirm, "no-firm", false, "Do not install firmware")
 	cmd.Flags().BoolVar(&linear, "linear", false, "Use linear standard output without split screen TUI")

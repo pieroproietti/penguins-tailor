@@ -7,6 +7,7 @@ import (
 
 func getCmd() *cobra.Command {
 	var repoURL string
+	var branch string
 
 	cmd := &cobra.Command{
 		Use:   "get [url]",
@@ -17,11 +18,12 @@ func getCmd() *cobra.Command {
 			if len(args) > 0 {
 				url = args[0]
 			}
-			return tailor.Get(url)
+			return tailor.Get(url, branch)
 		},
 	}
 
 	cmd.Flags().StringVarP(&repoURL, "url", "u", "", "URL of the costumes repository")
+	cmd.Flags().StringVarP(&branch, "branch", "b", "", "Branch of the costumes repository")
 
 	return cmd
 }

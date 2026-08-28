@@ -36,14 +36,21 @@ sudo make install
 ### Basic Commands
 
 - **`tailor get [url]`**
-  Clones or updates the costumes repository into `~/.wardrobe`. If no URL is specified, it defaults to the official repository (`https://github.com/pieroproietti/penguins-wardrobe`). You can also specify an alternative or third-party wardrobe repository:
+  Clones or updates the costumes repository into `~/.wardrobe`. If no URL is specified, it defaults to the official repository (`https://github.com/pieroproietti/penguins-wardrobe`). You can also specify an alternative or third-party wardrobe repository and an optional branch (`-b, --branch`):
   ```bash
   # Official penguins-wardrobe repository (default)
   tailor get
 
   # Custom or third-party wardrobe repository
   tailor get https://github.com/charliemartinez/penguins-wardrobe
+
+  # Custom wardrobe repository specifying a branch
+  tailor get https://github.com/charliemartinez/penguins-wardrobe -b develop
   ```
+
+  **Flags:**
+  - `-u, --url <url>`: URL of the costumes repository.
+  - `-b, --branch <branch>`: Branch of the costumes repository.
 
 - **`tailor list`**
   Lists all available costumes found in the repository along with a brief description.
@@ -58,11 +65,15 @@ sudo make install
   ```
 
 - **`tailor wear <costume>`**
-  Applies the specified costume to the system. Requires root privileges (`sudo`).
+  Applies the specified costume to the system. Requires root privileges (`sudo`). You can also specify an optional branch (`-b, --branch`) to automatically switch or clone the costumes repository on that branch before applying:
   ```bash
   sudo tailor wear colibri
+
+  # Apply a costume from a specific branch of the wardrobe
+  sudo tailor wear colibri -b develop
   ```
   **Flags:**
+  - `-b, --branch <branch>`: Branch of the costumes repository.
   - `--no-acc`: Skip installing accessory packages.
   - `--no-firm`: Skip installing firmware accessories.
   - `--linear`: Use linear standard output without split screen TUI.

@@ -10,10 +10,30 @@ import (
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
 
-func Wear(costumeName string, noAcc bool, noFirm bool, linear bool) error {
+func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string) error {
 	if os.Geteuid() != 0 {
 		utils.LogError("'tailor wear' needs to install packages and write to system paths; run it as root (e.g. 'sudo tailor wear %s').", costumeName)
 		return fmt.Errorf("must be run as root")
+	}
+
+	root, err := getWardrobeRoot()
+	if err != nil {
+		utils.LogError("Wardrobe root error: %v", err)
+		return err
+	}
+
+	// If branch is specified, or if the wardrobe repository does not exist yet (and we're not in local ./v2 dev mode),
+	// ensure wardrobe is fetched/cloned and on the right branch.
+	if branch != "" {
+		if err := Get("", branch); err != nil {
+			return fmt.Errorf("failed to get costumes repository on branch '%s': %w", branch, err)
+		}
+	} else if _, errStat := os.Stat(root); os.IsNotExist(errStat) {
+		if stat, errV2 := os.Stat("v2"); errV2 != nil || !stat.IsDir() {
+			if err := Get("", ""); err != nil {
+				return fmt.Errorf("failed to download costumes repository: %w", err)
+			}
+		}
 	}
 
 	v2Dir, err := getWardrobeV2Dir()
@@ -51,6 +71,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool) error {
 	isDirectAccessory := strings.HasPrefix(costumeName, "accessories/") || (suit.Name != "" && !strings.Contains(costumeDir, "/costumes/"))
 
 	origin := GetWardrobeOrigin()
+	activeBranch := GetWardrobeBranch()
 
 	icon := "👗"
 	title := fmt.Sprintf("COSTUME: %s", suit.Name)
@@ -62,7 +83,11 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool) error {
 		title = fmt.Sprintf("ACCESSORY: %s", suit.Name)
 	}
 	if origin != "" {
-		title = fmt.Sprintf("%s - atelier: %s", title, origin)
+		if activeBranch != "" && activeBranch != "main" && activeBranch != "master" {
+			title = fmt.Sprintf("%s - atelier: %s (%s)", title, origin, activeBranch)
+		} else {
+			title = fmt.Sprintf("%s - atelier: %s", title, origin)
+		}
 	}
 	if findPreseed(costumeDir) != "" {
 		title += ". Preseed applied"
@@ -226,7 +251,11 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool) error {
 		{"Costume / Oggetto", suit.Name},
 	}
 	if origin != "" {
-		summaryRows = append(summaryRows, [2]string{"Atelier", origin})
+		atelierVal := origin
+		if activeBranch != "" && activeBranch != "main" && activeBranch != "master" {
+			atelierVal = fmt.Sprintf("%s (%s)", origin, activeBranch)
+		}
+		summaryRows = append(summaryRows, [2]string{"Atelier", atelierVal})
 	}
 	summaryRows = append(summaryRows,
 		[2]string{"Pacchetti installati", fmt.Sprintf("%d", len(installedPackages))},

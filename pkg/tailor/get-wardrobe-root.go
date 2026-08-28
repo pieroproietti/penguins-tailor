@@ -129,6 +129,49 @@ func GetWardrobeOrigin() string {
 	return getGitOrigin(".")
 }
 
+// GetWardrobeBranch returns the active git branch of ~/.wardrobe/.git if available.
+func GetWardrobeBranch() string {
+	root, err := getWardrobeRoot()
+	if err == nil {
+		if branch := getGitBranch(root); branch != "" {
+			return branch
+		}
+	}
+	return getGitBranch(".")
+}
+
+// getGitBranch extracts current branch name from a directory containing a .git repository.
+func getGitBranch(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	gitDir := filepath.Join(dir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		return ""
+	}
+
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err == nil {
+		branch := strings.TrimSpace(string(out))
+		if branch != "" && branch != "HEAD" {
+			return branch
+		}
+	}
+
+	// Fallback to parsing .git/HEAD
+	headFile := filepath.Join(gitDir, "HEAD")
+	data, err := os.ReadFile(headFile)
+	if err == nil {
+		content := strings.TrimSpace(string(data))
+		if strings.HasPrefix(content, "ref: refs/heads/") {
+			return strings.TrimPrefix(content, "ref: refs/heads/")
+		}
+	}
+
+	return ""
+}
+
+
 // getGitOrigin extracts the remote origin URL from a directory containing a .git repository.
 func getGitOrigin(dir string) string {
 	if dir == "" {
@@ -177,6 +220,9 @@ func getGitOrigin(dir string) string {
 // normalizeGitURL normalizes a Git URL for comparison.
 func normalizeGitURL(raw string) string {
 	raw = strings.TrimSpace(raw)
+	if idx := strings.Index(raw, "#"); idx != -1 {
+		raw = raw[:idx]
+	}
 	raw = strings.TrimSuffix(raw, "/")
 	raw = strings.TrimSuffix(raw, ".git")
 

@@ -74,13 +74,16 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	activeBranch := GetWardrobeBranch()
 
 	icon := "👗"
-	costumeLabel := fmt.Sprintf("COSTUME: %s", suit.Name)
+	costumeLabel := fmt.Sprintf("Costume: %s", suit.Name)
 	if suit.Release != "" {
-		costumeLabel = fmt.Sprintf("COSTUME: %s (v%s)", suit.Name, suit.Release)
+		costumeLabel = fmt.Sprintf("Costume: %s (v%s)", suit.Name, suit.Release)
 	}
 	if isDirectAccessory {
 		icon = "👝"
-		costumeLabel = fmt.Sprintf("ACCESSORY: %s", suit.Name)
+		costumeLabel = fmt.Sprintf("Accessory: %s", suit.Name)
+		if suit.Release != "" {
+			costumeLabel = fmt.Sprintf("Accessory: %s (v%s)", suit.Name, suit.Release)
+		}
 	}
 
 	notes := suit.Description

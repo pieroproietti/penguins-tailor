@@ -189,63 +189,6 @@ func isInteractiveTerminal() bool {
 	return (fileInfo.Mode() & os.ModeCharDevice) != 0
 }
 
-// batchSize caps how many packages go into a single apt-get invocation.
-// Installing in smaller batches keeps each dpkg transaction's trigger
-// processing small, and each successfully completed batch is durably
-// installed on disk, so a crash mid-way only loses the current batch.
-const batchSize = 20
-
-func cleanAptProgress(line string) string {
-	line = strings.TrimSpace(line)
-	if strings.HasPrefix(line, "Get:") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			return "Download " + fields[1]
-		}
-		return "Download..."
-	}
-	if strings.HasPrefix(line, "Unpacking ") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			return "Unpack " + fields[1]
-		}
-		return "Unpack..."
-	}
-	if strings.HasPrefix(line, "Setting up ") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			return "Setup " + fields[1]
-		}
-		return "Setup..."
-	}
-	if strings.HasPrefix(line, "Processing triggers for ") {
-		pkg := strings.TrimPrefix(line, "Processing triggers for ")
-		if i := strings.Index(pkg, " "); i != -1 {
-			pkg = pkg[:i]
-		}
-		return "Trigger (" + pkg + ")"
-	}
-	if strings.HasPrefix(line, "Preparing to unpack ") {
-		fields := strings.Fields(line)
-		if len(fields) >= 4 {
-			return "Prep " + fields[3]
-		}
-	}
-	if strings.HasPrefix(line, "Selecting ") {
-		fields := strings.Fields(line)
-		if len(fields) >= 4 {
-			return "Select " + fields[3]
-		}
-	}
-	if strings.HasPrefix(line, "Hit:") || strings.HasPrefix(line, "Ign:") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 {
-			return "Fetch " + fields[1]
-		}
-	}
-	return ""
-}
-
 // installWithRetries installs packages, falling back to one-by-one on failure
 func installWithRetries(packages []string, retries int) []string {
 	return installPackagesImpl(packages, retries, false)
@@ -294,63 +237,37 @@ func installPackagesImpl(packages []string, retries int, noRecommends bool) []st
 		flags = "-y --no-install-recommends"
 	}
 
-	totalBatches := (len(toInstall) + batchSize - 1) / batchSize
-	if totalBatches > 1 {
-		logToFile(fmt.Sprintf("Installing %d packages in %d batches of up to %d...", len(toInstall), totalBatches, batchSize))
-	}
-
-	var failed []string
-	for start := 0; start < len(toInstall); start += batchSize {
-		end := start + batchSize
-		if end > len(toInstall) {
-			end = len(toInstall)
-		}
-		batch := toInstall[start:end]
-		batchNum := start/batchSize + 1
-		if ss := utils.GetSplitScreen(); ss != nil && totalBatches > 1 {
-			ss.SetAction("Installing packages (batch %d/%d)...", batchNum, totalBatches)
-		}
-		logToFile(fmt.Sprintf("Batch %d/%d (packages %d-%d of %d): %v", batchNum, totalBatches, start+1, end, len(toInstall), batch))
-		failed = append(failed, installBatchWithFallback(batch, retries, flags)...)
-	}
-	return append(missing, failed...)
-}
-
-// installBatchWithFallback installs a single batch in bulk, falling back
-// to one-by-one installation within the batch if the bulk call fails.
-func installBatchWithFallback(batch []string, retries int, flags string) []string {
 	// License-prompt packages must never go through the noninteractive
-	// path: their preinst aborts and poisons dpkg for every later batch.
+	// path: their preinst aborts and poisons dpkg.
 	var clean []string
-	for _, p := range batch {
+	for _, p := range toInstall {
 		if !isLicensePrompt(p) {
 			clean = append(clean, p)
 		}
 	}
-	batch = clean
-	if len(batch) == 0 {
-		return nil
+	if len(clean) == 0 {
+		return missing
 	}
-	
+
 	// Use readline frontend if we have an interactive terminal
 	debconfFrontend := "readline"
 	if !isInteractiveTerminal() {
 		debconfFrontend = "noninteractive"
 	}
-	
-	pkgString := strings.Join(batch, " ")
+
+	pkgString := strings.Join(clean, " ")
 	cmd := fmt.Sprintf("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=%s apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' %s %s", debconfFrontend, flags, pkgString)
-	logToFile(fmt.Sprintf("Installing batch of %d packages: %s", len(batch), pkgString))
+	logToFile(fmt.Sprintf("Installing %d packages: %s", len(clean), pkgString))
 	if err := utils.ExecTee(cmd, tailorLogFile); err == nil {
-		logToFile("✅ Batch installed.")
-		return nil
+		logToFile("✅ Packages installed.")
+		return missing
 	}
 
 	// Heal dpkg state before retrying
 	healDpkgState()
 
 	logToFile("⚠️  Retrying package by package to isolate failures...")
-	pending := batch
+	pending := clean
 	for attempt := 1; attempt <= retries && len(pending) > 0; attempt++ {
 		var stillFailing []string
 		for _, pkg := range pending {
@@ -376,9 +293,9 @@ func installBatchWithFallback(batch []string, retries int, flags string) []strin
 	if len(pending) > 0 {
 		logToFile(fmt.Sprintf("⚠️  %d packages could not be installed: %v", len(pending), pending))
 	} else {
-		logToFile("✅ All packages in batch installed successfully (one by one).")
+		logToFile("✅ All packages installed successfully (one by one).")
 	}
-	return pending
+	return append(missing, pending...)
 }
 
 // isPackageInstalled reports whether dpkg considers pkg to be correctly and fully installed.

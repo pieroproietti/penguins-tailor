@@ -46,9 +46,9 @@ type SplitScreenConfig struct {
 }
 
 // FormatHeaderLines constructs the header lines according to layout requirements:
-// 1ª riga: Atelier: <remote/origin> (Costume: <costume>) or Costume: <costume>
-// 2ª riga: (se non su default) Branch: <branch>
-// 3ª riga: (se presente) Note: <notes>
+// 1ª riga: Atelier: <remote/origin> (con eventuale branch se non default)
+// 2ª riga: Costume: <costume> (o Accessory: <accessory>)
+// 3ª riga: <descrizione>
 func FormatHeaderLines(cfg SplitScreenConfig) []string {
 	var lines []string
 
@@ -57,31 +57,46 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 		icon = "👗"
 	}
 
-	// 1ª riga: Atelier (con eventuale costume) oppure solo Costume
-	var line1 string
+	// 1ª riga: Atelier
 	if cfg.Atelier != "" {
-		if cfg.Costume != "" {
-			line1 = fmt.Sprintf("  %s %sAtelier:%s %s (%s)", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Atelier, cfg.Costume)
-		} else {
-			line1 = fmt.Sprintf("  %s %sAtelier:%s %s", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Atelier)
+		atelierVal := cfg.Atelier
+		if cfg.Branch != "" && cfg.Branch != "main" && cfg.Branch != "master" {
+			atelierVal = fmt.Sprintf("%s (%s)", cfg.Atelier, cfg.Branch)
 		}
-	} else if cfg.Costume != "" {
-		line1 = fmt.Sprintf("  %s %s%s%s", icon, colorize(ColorBold+ColorWhite), cfg.Costume, colorize(ColorReset))
-	} else {
-		line1 = fmt.Sprintf("  %s", icon)
+		line1 := fmt.Sprintf("  %s %sAtelier:%s %s", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), atelierVal)
+		lines = append(lines, line1)
 	}
-	lines = append(lines, line1)
 
-	// 2ª riga: se non siamo su default (main/master o vuoto), Branch: <branch>
-	if cfg.Branch != "" && cfg.Branch != "main" && cfg.Branch != "master" {
-		line2 := fmt.Sprintf("     %sBranch:%s %s", colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Branch)
+	// 2ª riga: Costume / Accessory
+	if cfg.Costume != "" {
+		var line2 string
+		indent := "     "
+		if cfg.Atelier == "" {
+			indent = fmt.Sprintf("  %s ", icon)
+		}
+		if strings.Contains(cfg.Costume, ":") {
+			parts := strings.SplitN(cfg.Costume, ":", 2)
+			label := strings.TrimSpace(parts[0]) + ":"
+			val := strings.TrimSpace(parts[1])
+			if val != "" {
+				line2 = fmt.Sprintf("%s%s%s%s %s", indent, colorize(ColorBold+ColorWhite), label, colorize(ColorReset), val)
+			} else {
+				line2 = fmt.Sprintf("%s%s%s%s", indent, colorize(ColorBold+ColorWhite), label, colorize(ColorReset))
+			}
+		} else {
+			line2 = fmt.Sprintf("%s%sCostume:%s %s", indent, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.Costume)
+		}
 		lines = append(lines, line2)
 	}
 
-	// 3ª riga: Note
+	// 3ª riga: Descrizione (senza label prefisso)
 	if cfg.Notes != "" {
-		line3 := fmt.Sprintf("     %sNote:%s %s%s%s", colorize(ColorBold+ColorWhite), colorize(ColorReset), colorize(ColorDim), cfg.Notes, colorize(ColorReset))
+		line3 := fmt.Sprintf("     %s%s%s", colorize(ColorDim), cfg.Notes, colorize(ColorReset))
 		lines = append(lines, line3)
+	}
+
+	if len(lines) == 0 {
+		lines = append(lines, fmt.Sprintf("  %s", icon))
 	}
 
 	return lines

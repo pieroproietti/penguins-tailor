@@ -1,0 +1,308 @@
+name: "🔨 Hammers Matrix (Packaging)"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true    
+
+jobs:
+  hammer-build:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+          include:
+          # ==========================================
+          # 🏔️ ALPINE LINUX (The Ice Peak)
+          # ==========================================
+          - distro: alpine
+            image: alpine:latest
+            # Now that the Go builder moves the file to the root, the pattern is simple!
+            pkg_pattern: "*.apk"
+            prep_cmd: |
+              apk update
+              apk add go gcc musl-dev make git abuild sudo
+              adduser -D artisan
+              adduser artisan abuild
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                abuild-keygen -a -i -n
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                # make package does it all: compiles, creates the APKBUILD, runs abuild and moves the file
+                make package
+              "
+            # The installation now pulls directly from the project folder
+            install_cmd: apk add --allow-untrusted ./*.apk
+              
+          # ==========================================
+          # 🏹 ARCH LINUX (The Proving Ground)
+          # ==========================================
+          - distro: arch
+            image: archlinux:latest
+            pkg_pattern: "*.pkg.tar.zst"
+            prep_cmd: |
+              pacman -Syu --noconfirm go gcc make git sudo fakeroot binutils
+              useradd -m artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                make package
+              "
+            install_cmd: pacman -U --noconfirm *.pkg.tar.zst
+
+          # ==========================================
+          # 🏹 MANJARO
+          # ==========================================
+          - distro: manjaro
+            image: manjarolinux/base:latest
+            pkg_pattern: "*.pkg.tar.zst"
+            prep_cmd: |
+              pacman -Syu --noconfirm go gcc make git sudo fakeroot binutils
+              useradd -m artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                make package
+              "
+            install_cmd: pacman -U --noconfirm *.pkg.tar.zst
+
+          # ==========================================
+          # 🌀 DEBIAN (The Old Sage)
+          # ==========================================
+          - distro: debian
+            image: debian:bookworm
+            pkg_pattern: "*.deb"
+            prep_cmd: |
+              export DEBIAN_FRONTEND=noninteractive
+              
+              apt-get update
+              
+              # 2. Pre-configure console-setup and keyboard to avoid Dialog blocking
+              apt-get install -y debconf-utils
+              
+              # Use this instead of <<<
+              echo "keyboard-configuration keyboard-configuration/layout select US" | debconf-set-selections
+              echo "keyboard-configuration keyboard-configuration/modelcode select pc105" | debconf-set-selections
+              echo "console-setup console-setup/detect guess" | debconf-set-selections
+
+              apt-get install -y wget build-essential git sudo dpkg-dev
+              wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+              tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+              ln -s /usr/local/go/bin/go /usr/bin/go
+              useradd -m -s /bin/bash artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                make package
+              "
+            install_cmd: ls -la ./*.deb && apt-get install -y ./*.deb
+
+          # ==========================================
+          # 🎩 FEDORA
+          # ==========================================
+          - distro: fedora
+            image: fedora:latest
+            pkg_pattern: "*.rpm"
+            prep_cmd: |
+              dnf update -y
+              dnf install -y gcc make git rpm-build golang sudo
+              useradd -m -s /bin/bash artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                make package
+              "
+            install_cmd: dnf install -y ./*.rpm
+
+          # ==========================================
+          # 🦎 openSUSE (Tumbleweed)
+          # ==========================================
+          - distro: opensuse
+            image: opensuse/tumbleweed
+            pkg_pattern: "*.rpm"
+            prep_cmd: |
+              zypper -n refresh
+              zypper -n install gcc make git rpm-build go sudo shadow
+              useradd -m -s /bin/bash artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                make package
+              "
+            install_cmd: zypper -n --no-gpg-checks install ./*.rpm
+
+          # ==========================================
+          # 🚀 DEBIAN RISC-V (The Cosmic Vineyard)
+          # ==========================================
+          - distro: debian-riscv64
+            image: ubuntu:22.04
+            pkg_pattern: "*.deb"
+            
+            prep_cmd: |
+              export DEBIAN_FRONTEND=noninteractive
+              
+              # 1. THE MULTI-ARCH MAGIC: Let's also add updates to align versions!
+              dpkg --add-architecture riscv64
+              sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+              
+              # Insert the base repo, updates, and security patches for RISC-V
+              cat <<EOF > /etc/apt/sources.list.d/riscv64.list
+              deb [arch=riscv64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+              deb [arch=riscv64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+              deb [arch=riscv64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+              EOF
+              
+              apt-get update
+              apt-get install -y debconf-utils
+              echo "keyboard-configuration keyboard-configuration/layout select US" | debconf-set-selections
+              echo "keyboard-configuration keyboard-configuration/modelcode select pc105" | debconf-set-selections
+              echo "console-setup console-setup/detect guess" | debconf-set-selections
+              
+              # 2. Toolchain + Emulator + native RISC-V libcrypt (now the versions will match!)
+              apt-get install -y wget build-essential git sudo dpkg-dev gcc-riscv64-linux-gnu qemu-user-static binfmt-support libcrypt-dev:riscv64
+              
+              # Download Go for x86_64
+              wget -q https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+              tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+              ln -s /usr/local/go/bin/go /usr/bin/go
+              
+              useradd -m -s /bin/bash artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                
+                # 🧹 THE BROOM MAGIC
+                make clean
+                
+                # THE ARMORED MAGIC
+                make package GOOS=linux GOARCH=riscv64 CC=riscv64-linux-gnu-gcc RUNNER=qemu-riscv64-static
+              "
+            install_cmd: echo "✅ RISC-V package generated. Skipping installation test on x86_64 runner."
+
+          # ==========================================
+          # 🍓 DEBIAN ARM64 (Raspberry Pi & Oracle Cloud)
+          # ==========================================
+          - distro: debian-arm64
+            image: ubuntu:22.04
+            pkg_pattern: "*.deb"
+            
+            prep_cmd: |
+              export DEBIAN_FRONTEND=noninteractive
+              
+              # 1. THE MULTI-ARCH MAGIC: Add the ARM64 architecture
+              dpkg --add-architecture arm64
+              sed -i 's/^deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+              
+              # Insert the base repo, updates, and security patches for ARM64
+              cat <<EOF > /etc/apt/sources.list.d/arm64.list
+              deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+              deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+              deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+              EOF
+              
+              apt-get update
+              apt-get install -y debconf-utils
+              echo "keyboard-configuration keyboard-configuration/layout select US" | debconf-set-selections
+              echo "keyboard-configuration keyboard-configuration/modelcode select pc105" | debconf-set-selections
+              echo "console-setup console-setup/detect guess" | debconf-set-selections
+              
+              # 2. Toolchain + Emulator + native ARM64 libcrypt
+              apt-get install -y wget build-essential git sudo dpkg-dev gcc-aarch64-linux-gnu qemu-user-static binfmt-support libcrypt-dev:arm64
+              
+              # Download Go for x86_64
+              wget -q https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+              tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+              ln -s /usr/local/go/bin/go /usr/bin/go
+              
+              useradd -m -s /bin/bash artisan
+              echo "artisan ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            pack_cmd: |
+              chown -R artisan:artisan .
+              su - artisan -c "
+                set -e
+                cd '$GITHUB_WORKSPACE'
+                git config --global --add safe.directory '*'
+                
+                # 🧹 THE BROOM MAGIC
+                make clean
+                
+                # THE ARMORED MAGIC FOR ARM64
+                make package GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc RUNNER=qemu-aarch64-static
+              "
+            install_cmd: echo "✅ ARM64 package generated. Skipping installation test on x86_64 runner."
+            
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: 🧰 Tool setup in the workshop
+        run: ${{ matrix.prep_cmd }}
+
+      - name: 📥 Code Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: ⚙️ Compile & Stage Sources (oa & coa)
+        run: |
+          echo "🔓 Unlocking the repository for root..."
+          git config --global --add safe.directory '*'
+          echo "🔨 Compiling..."
+          make
+
+      - name: 📦 Create Native Package (${{ matrix.distro }})
+        run: ${{ matrix.pack_cmd }}
+
+      - name: 🚀 Install into Live Environment
+        run: ${{ matrix.install_cmd }}
+
+      # --------------------------------------------------------------------
+      # LOCAL LOOT EXTRACTION (Separately downloadable)
+      # --------------------------------------------------------------------
+      - name: 🗄️ Package Export Preparation
+        run: |
+          mkdir -p export
+          cp ${{ matrix.pkg_pattern }} export/ || echo "⚠️ No package found for this run"
+
+      - name: 📤 Publish Package as Artifact ${{ matrix.distro }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: penguins-eggs-${{ matrix.distro }}
+          path: export/
+          retention-days: 7
+          

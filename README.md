@@ -126,6 +126,14 @@ tailor export log -u artisan -i 192.168.1.50 -d /home/artisan/logs
 
 ---
 
+## 🙏 Acknowledgements
+
+# 🙏 Acknowledgements
+
+ Special thanks to **[Charlie Martínez](https://github.com/charliemartinez)** [Quirinux](https://quirinux.org) for his invaluable support, extensive testing, ideas, and close collaboration during the development
+  and experimentation of `penguins-tailor`
+---
+
 ## 📜 License
 
 MIT License. Copyright (c) 2026 Piero Proietti.

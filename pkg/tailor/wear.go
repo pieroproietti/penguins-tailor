@@ -1,11 +1,13 @@
 package tailor
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
@@ -293,6 +295,9 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		}
 	}
 
+	// Prompt user to review terminal output before closing split screen and showing summary
+	waitKeyPress("Press Enter to continue to summary report...")
+
 	// Close split screen before printing final summary box
 	if ss != nil {
 		ss.Close()
@@ -340,13 +345,13 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	}
 	utils.PrintSummaryBox(summaryTitle, summaryRows)
 
-	if suit.Reboot && !dryRun {
-		fmt.Printf("\n%s%s⚠ This costume recommends restarting the system upon completion.%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
-	}
 	if !dryRun {
 		printKernelCleanupReminder()
 		if suit.DisplayManagerNotice {
 			printDisplayManagerNotice()
+		}
+		if suit.Reboot {
+			rebootSystem()
 		}
 	}
 	return nil
@@ -781,4 +786,27 @@ func copySkelToUser(dryRun bool) {
 	logToFile(fmt.Sprintf("Syncing /etc/skel -> %s", userHome))
 	cmd := fmt.Sprintf("rsync -a --no-o --no-g --chown=%s:%s /etc/skel/ %s/", targetUser, targetUser, userHome)
 	_ = utils.ExecTee(cmd, tailorLogFile)
+}
+
+func waitKeyPress(message string) {
+	if !isInteractiveTerminal() {
+		return
+	}
+	if message == "" {
+		message = "Press Enter to continue..."
+	}
+	fmt.Printf("\n%s%s%s%s\n", utils.ColorCyan, utils.ColorBold, message, utils.ColorReset)
+	reader := bufio.NewReader(os.Stdin)
+	_, _ = reader.ReadString('\n')
+}
+
+func rebootSystem() {
+	fmt.Printf("\n%s%s🔄 Costume requires a reboot. Restarting system in 3 seconds...%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
+	logToFile("Costume requires a reboot. Initiating system restart...")
+	time.Sleep(3 * time.Second)
+	if err := exec.Command("systemctl", "reboot").Run(); err != nil {
+		if err2 := exec.Command("reboot").Run(); err2 != nil {
+			_ = exec.Command("shutdown", "-r", "now").Run()
+		}
+	}
 }

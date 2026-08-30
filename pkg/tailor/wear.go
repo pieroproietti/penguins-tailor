@@ -146,7 +146,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 	SetLicensePromptPackages(suit.PackagesInteractive)
 
-	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun)
+	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun, false)
 	if err != nil {
 		return err
 	}
@@ -176,18 +176,39 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 			if accYaml := findYaml(accDir); accYaml != "" {
 				if accSuit, err := loadSuit(accYaml); err == nil {
-					accPreseedSuffix := ""
-					if findPreseed(accDir) != "" {
-						accPreseedSuffix = ". Preseed applied"
-					}
 					if ss != nil {
-						ss.AddStep(fmt.Sprintf("%s--> [%d/%d] Accessory: %s%s%s", utils.ColorCyan, idx+1, len(suit.Accessories), accName, accPreseedSuffix, utils.ColorReset))
-					} else {
-						utils.PrintSubSection("-->", fmt.Sprintf("[%d/%d] Accessory: %s%s", idx+1, len(suit.Accessories), accName, accPreseedSuffix))
+						ss.SetAction("Accessory [%d/%d]: %s...", idx+1, len(suit.Accessories), accName)
 					}
-					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun)
+					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun, true)
 					installedPackages = append(installedPackages, accInstalled...)
 					failedPackages = append(failedPackages, accFailed...)
+
+					accPreseedSuffix := ""
+					if findPreseed(accDir) != "" {
+						accPreseedSuffix = " - Preseed applied"
+					}
+					accDetails := ""
+					if len(accInstalled) > 0 || len(accFailed) > 0 {
+						if len(accFailed) > 0 {
+							accDetails = fmt.Sprintf(" - Installed %d packages (%d failed)", len(accInstalled), len(accFailed))
+						} else {
+							suffix := ""
+							if dryRun {
+								suffix = " (simulated)"
+							}
+							accDetails = fmt.Sprintf(" - Installed %d packages%s", len(accInstalled), suffix)
+						}
+					}
+
+					if ss != nil {
+						color := utils.ColorCyan
+						if len(accFailed) > 0 {
+							color = utils.ColorYellow
+						}
+						ss.AddStep(fmt.Sprintf("%s--> [%d/%d] Accessory: %s%s%s%s", color, idx+1, len(suit.Accessories), accName, accDetails, accPreseedSuffix, utils.ColorReset))
+					} else {
+						utils.PrintSubSection("-->", fmt.Sprintf("[%d/%d] Accessory: %s%s%s", idx+1, len(suit.Accessories), accName, accDetails, accPreseedSuffix))
+					}
 				} else {
 					if ss != nil {
 						ss.AddStep(fmt.Sprintf("%s[WARN]%s Could not load accessory '%s'", utils.ColorYellow, utils.ColorReset, accName))
@@ -412,7 +433,7 @@ func healAndRetryFailed(failed []string) []string {
 }
 
 // applySuit applies a costume or accessory definition with clean spinners
-func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) {
+func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string, []string, error) {
 	var installedPackages []string
 	var failedPackages []string
 	ss := utils.GetSplitScreen()
@@ -434,10 +455,14 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 	// Repositories
 	if suit.Sequence != nil && suit.Sequence.Repositories != nil {
 		if ss != nil {
-			ss.SetAction("Configuring package repositories & updating cache...")
+			if suit.Name != "" {
+				ss.SetAction("%s, configuring package repositories & updating cache...", suit.Name)
+			} else {
+				ss.SetAction("Configuring package repositories & updating cache...")
+			}
 		}
 		setupRepositories(suit.Sequence.Repositories, suit.Name, dryRun)
-		if ss != nil {
+		if !isAccessory && ss != nil {
 			statusMsg := "Repositories configured & updated"
 			if dryRun {
 				statusMsg += " (simulated)"
@@ -449,7 +474,11 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 	// Packages
 	if len(suit.Packages) > 0 {
 		if ss != nil {
-			ss.SetAction("Installing packages (%d packages)...", len(suit.Packages))
+			if suit.Name != "" {
+				ss.SetAction("%s, installing packages (%d packages)...", suit.Name, len(suit.Packages))
+			} else {
+				ss.SetAction("Installing packages (%d packages)...", len(suit.Packages))
+			}
 		}
 		var failed []string
 		if dryRun {
@@ -461,7 +490,7 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 			installed := diffStr(suit.Packages, failed)
 			installedPackages = append(installedPackages, installed...)
 		}
-		if ss != nil {
+		if !isAccessory && ss != nil {
 			if len(failed) > 0 {
 				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.Packages)-len(failed), len(failed)))
 			} else {
@@ -477,7 +506,11 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 	// Packages No Recommends
 	if len(suit.PackagesNoRecommends) > 0 {
 		if ss != nil {
-			ss.SetAction("Installing packages without recommends (%d packages)...", len(suit.PackagesNoRecommends))
+			if suit.Name != "" {
+				ss.SetAction("%s, installing packages without recommends (%d packages)...", suit.Name, len(suit.PackagesNoRecommends))
+			} else {
+				ss.SetAction("Installing packages without recommends (%d packages)...", len(suit.PackagesNoRecommends))
+			}
 		}
 		var failed []string
 		if dryRun {
@@ -489,7 +522,7 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 			installed := diffStr(suit.PackagesNoRecommends, failed)
 			installedPackages = append(installedPackages, installed...)
 		}
-		if ss != nil {
+		if !isAccessory && ss != nil {
 			if len(failed) > 0 {
 				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages without recommends (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.PackagesNoRecommends)-len(failed), len(failed)))
 			} else {
@@ -505,7 +538,11 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 	// Packages Interactive
 	if len(suit.PackagesInteractive) > 0 {
 		if ss != nil {
-			ss.SetAction("Configuring %d interactive packages...", len(suit.PackagesInteractive))
+			if suit.Name != "" {
+				ss.SetAction("%s, configuring %d interactive packages...", suit.Name, len(suit.PackagesInteractive))
+			} else {
+				ss.SetAction("Configuring %d interactive packages...", len(suit.PackagesInteractive))
+			}
 		}
 		var failed []string
 		if dryRun {
@@ -517,7 +554,7 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 			installed := diffStr(suit.PackagesInteractive, failed)
 			installedPackages = append(installedPackages, installed...)
 		}
-		if ss != nil {
+		if !isAccessory && ss != nil {
 			if len(failed) > 0 {
 				ss.AddStep(fmt.Sprintf("%s[WARN]%s Some interactive packages could not be installed", utils.ColorYellow, utils.ColorReset))
 			} else {
@@ -530,28 +567,32 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 		}
 	}
 
-	// Sysroot Overlay
+	// System configuration (sysroot)
 	sysrootPath := filepath.Join(dir, "sysroot")
 	if _, err := os.Stat(sysrootPath); os.IsNotExist(err) {
 		sysrootPath = filepath.Join(dir, "dirs")
 	}
 	if _, err := os.Stat(sysrootPath); err == nil {
 		if ss != nil {
-			ss.SetAction("Applying filesystem overlay (sysroot)...")
+			if suit.Name != "" {
+				ss.SetAction("%s, applying system configuration (sysroot)...", suit.Name)
+			} else {
+				ss.SetAction("Applying system configuration (sysroot)...")
+			}
 		}
 		if dryRun {
-			logToFile(fmt.Sprintf("[DRY-RUN] Would rsync overlay %s -> /", sysrootPath))
-			if ss != nil {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Filesystem overlay applied (simulated)", utils.ColorGreen, utils.ColorReset))
+			logToFile(fmt.Sprintf("[DRY-RUN] Would rsync sysroot configuration %s -> /", sysrootPath))
+			if !isAccessory && ss != nil {
+				ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied (simulated)", utils.ColorGreen, utils.ColorReset))
 			}
 		} else {
 			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
 			err := utils.ExecTee(cmd, tailorLogFile)
-			if ss != nil {
+			if !isAccessory && ss != nil {
 				if err != nil {
-					ss.AddStep(fmt.Sprintf("%s[WARN]%s Filesystem overlay applied with warnings", utils.ColorYellow, utils.ColorReset))
+					ss.AddStep(fmt.Sprintf("%s[WARN]%s System configuration applied with warnings", utils.ColorYellow, utils.ColorReset))
 				} else {
-					ss.AddStep(fmt.Sprintf("%s[OK]%s Filesystem overlay applied", utils.ColorGreen, utils.ColorReset))
+					ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied", utils.ColorGreen, utils.ColorReset))
 				}
 			}
 		}
@@ -560,7 +601,11 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 	// Finalization commands
 	if len(suit.Cmds) > 0 {
 		if ss != nil {
-			ss.SetAction("Running finalization scripts (%d commands)...", len(suit.Cmds))
+			if suit.Name != "" {
+				ss.SetAction("%s, running finalization scripts (%d commands)...", suit.Name, len(suit.Cmds))
+			} else {
+				ss.SetAction("Running finalization scripts (%d commands)...", len(suit.Cmds))
+			}
 		}
 		for idx, command := range suit.Cmds {
 			fields := strings.Fields(command)
@@ -569,7 +614,11 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 				cmdName = filepath.Base(fields[0])
 			}
 			if ss != nil {
-				ss.SetAction("[%d/%d] Finalization: %s", idx+1, len(suit.Cmds), cmdName)
+				if suit.Name != "" {
+					ss.SetAction("%s, [%d/%d] Finalization: %s", suit.Name, idx+1, len(suit.Cmds), cmdName)
+				} else {
+					ss.SetAction("[%d/%d] Finalization: %s", idx+1, len(suit.Cmds), cmdName)
+				}
 			}
 			if dryRun {
 				logToFile(fmt.Sprintf("[DRY-RUN] Would run finalization command: %s", command))
@@ -591,7 +640,7 @@ func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) 
 			}
 			_ = utils.ExecTee(command, tailorLogFile)
 		}
-		if ss != nil {
+		if !isAccessory && ss != nil {
 			suffix := ""
 			if dryRun {
 				suffix = " (simulated)"

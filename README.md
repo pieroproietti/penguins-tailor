@@ -2,7 +2,7 @@
 
 **penguins-tailor** is a standalone, lightweight tool written in Go to manage and apply system configurations, desktop environments, and themes ("costumes") to Linux distributions.
 
-`tailor` works in conjunction with costume repositories ("wardrobes") containing declarative YAML definitions, package lists, and filesystem overlays. By default, it connects to the official [penguins-wardrobe](https://github.com/pieroproietti/penguins-wardrobe) repository, but it can also work with any third-party or custom wardrobe by supplying the Git repository URL.
+`tailor` works in conjunction with costume repositories ("wardrobes") containing declarative YAML definitions, package lists, and system configuration files. By default, it connects to the official [penguins-wardrobe](https://github.com/pieroproietti/penguins-wardrobe) repository, but it can also work with any third-party or custom wardrobe by supplying the Git repository URL.
 
 ---
 
@@ -11,7 +11,7 @@
 - **Get**: Download or update a costume repository (`tailor get`).
 - **List**: Enumerate available costumes and their descriptions (`tailor list`).
 - **Show**: Inspect detailed information and packages required by a costume (`tailor show <costume>`).
-- **Wear**: Seamlessly apply a costume to the system (`sudo tailor wear <costume>`), configuring repositories, packages, sysroot overlays, and user skel settings.
+- **Wear**: Seamlessly apply a costume to the system (`sudo tailor wear <costume>`), configuring repositories, packages, sysroot configurations, and user skel settings.
 - **Export**: Transfer native packages (`tailor export pkg`) or execution logs and reports (`tailor export log`) to remote storage via SSH.
 - **Build**: Integrated packaging tool to compile binaries and produce native distribution packages (`tailor tools build`).
 - **Distro-Aware**: Automatically identifies target distributions (Debian, Ubuntu, Arch, Alpine, Fedora, openSUSE, etc.) and generates assistance prompts if non-Debian package managers are present.

@@ -35,7 +35,7 @@ sequence:
 		t.Fatalf("loadSuit failed: %v", err)
 	}
 
-	installed, failed, err := applySuit(tempDir, suit, true)
+	installed, failed, err := applySuit(tempDir, suit, true, false)
 	if err != nil {
 		t.Fatalf("applySuit in dry-run mode failed: %v", err)
 	}
@@ -48,5 +48,41 @@ sequence:
 	expectedTotal := len(suit.Packages) + len(suit.PackagesNoRecommends) + len(suit.PackagesInteractive)
 	if len(installed) != expectedTotal {
 		t.Errorf("expected %d installed packages in dry-run, got %d: %v", expectedTotal, len(installed), installed)
+	}
+}
+
+func TestApplySuit_AccessoryMode(t *testing.T) {
+	tempDir := t.TempDir()
+
+	accYaml := `name: eggs-dev
+description: Accessory with 6 packages
+packages:
+  - code
+  - nodejs
+  - build-essential
+  - dpkg-dev
+  - git
+  - golang
+`
+	yamlPath := filepath.Join(tempDir, "index.yaml")
+	if err := os.WriteFile(yamlPath, []byte(accYaml), 0644); err != nil {
+		t.Fatalf("failed to write accessory fixture: %v", err)
+	}
+
+	suit, err := loadSuit(yamlPath)
+	if err != nil {
+		t.Fatalf("loadSuit failed: %v", err)
+	}
+
+	installed, failed, err := applySuit(tempDir, suit, true, true)
+	if err != nil {
+		t.Fatalf("applySuit in accessory dry-run mode failed: %v", err)
+	}
+
+	if len(failed) != 0 {
+		t.Errorf("expected 0 failed packages, got %d: %v", len(failed), failed)
+	}
+	if len(installed) != 6 {
+		t.Errorf("expected 6 installed packages for accessory, got %d: %v", len(installed), installed)
 	}
 }

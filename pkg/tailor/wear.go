@@ -183,6 +183,41 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					installedPackages = append(installedPackages, accInstalled...)
 					failedPackages = append(failedPackages, accFailed...)
 
+					// If the accessory defines nested accessories, apply them recursively
+					if len(accSuit.Accessories) > 0 {
+						for subIdx, subAccName := range accSuit.Accessories {
+							if noFirm && (subAccName == "firmwares" || strings.Contains(subAccName, "firmware")) {
+								continue
+							}
+							var subAccDir string
+							if strings.HasPrefix(subAccName, "./") || strings.HasPrefix(subAccName, "../") {
+								subAccDir = filepath.Join(accDir, subAccName)
+							} else if strings.HasPrefix(subAccName, "accessories/") {
+								subAccDir = filepath.Join(v2Dir, subAccName)
+							} else {
+								subAccDir = filepath.Join(v2Dir, "accessories", subAccName)
+							}
+							if subAccYaml := findYaml(subAccDir); subAccYaml != "" {
+								if subAccSuit, err := loadSuit(subAccYaml); err == nil {
+									if ss != nil {
+										ss.SetAction("  Nested accessory [%d/%d]: %s...", subIdx+1, len(accSuit.Accessories), subAccName)
+									}
+									subInstalled, subFailed, _ := applySuit(subAccDir, subAccSuit, dryRun, true)
+									installedPackages = append(installedPackages, subInstalled...)
+									failedPackages = append(failedPackages, subFailed...)
+									if len(subAccSuit.FinalizeCmds) > 0 {
+										executeFinalizeCommands(subAccSuit.FinalizeCmds, subAccDir, subAccSuit.Name, dryRun)
+									}
+								}
+							}
+						}
+					}
+
+					// If the accessory defines its own FinalizeCmds, execute them for this accessory
+					if len(accSuit.FinalizeCmds) > 0 {
+						executeFinalizeCommands(accSuit.FinalizeCmds, accDir, accSuit.Name, dryRun)
+					}
+
 					accPreseedSuffix := ""
 					if findPreseed(accDir) != "" {
 						accPreseedSuffix = " - Preseed applied"
@@ -232,6 +267,14 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 			ss.SetAction("Healing DKMS state...")
 		}
 		failedPackages = healAndRetryFailed(failedPackages)
+	}
+
+	// Costume Sysroot Overlay
+	applySysroot(costumeDir, suit.Name, dryRun, false)
+
+	// Costume Finalization commands
+	if len(suit.FinalizeCmds) > 0 {
+		executeFinalizeCommands(suit.FinalizeCmds, costumeDir, suit.Name, dryRun)
 	}
 
 	// User environment synchronization
@@ -567,47 +610,21 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 		}
 	}
 
-	// System configuration (sysroot)
-	sysrootPath := filepath.Join(dir, "sysroot")
-	if _, err := os.Stat(sysrootPath); os.IsNotExist(err) {
-		sysrootPath = filepath.Join(dir, "dirs")
-	}
-	if _, err := os.Stat(sysrootPath); err == nil {
-		if ss != nil {
-			if suit.Name != "" {
-				ss.SetAction("%s, applying system configuration (sysroot)...", suit.Name)
-			} else {
-				ss.SetAction("Applying system configuration (sysroot)...")
-			}
-		}
-		if dryRun {
-			logToFile(fmt.Sprintf("[DRY-RUN] Would rsync sysroot configuration %s -> /", sysrootPath))
-			if !isAccessory && ss != nil {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied (simulated)", utils.ColorGreen, utils.ColorReset))
-			}
-		} else {
-			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
-			err := utils.ExecTee(cmd, tailorLogFile)
-			if !isAccessory && ss != nil {
-				if err != nil {
-					ss.AddStep(fmt.Sprintf("%s[WARN]%s System configuration applied with warnings", utils.ColorYellow, utils.ColorReset))
-				} else {
-					ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied", utils.ColorGreen, utils.ColorReset))
-				}
-			}
-		}
+	// For accessories, apply their sysroot overlay right after their packages
+	if isAccessory {
+		applySysroot(dir, suit.Name, dryRun, true)
 	}
 
-	// Finalization commands
-	if len(suit.Cmds) > 0 {
+	// Sequence commands (intermediate commands defined in sequence.cmds)
+	if len(suit.SequenceCmds) > 0 {
 		if ss != nil {
 			if suit.Name != "" {
-				ss.SetAction("%s, running finalization scripts (%d commands)...", suit.Name, len(suit.Cmds))
+				ss.SetAction("%s, running sequence scripts (%d commands)...", suit.Name, len(suit.SequenceCmds))
 			} else {
-				ss.SetAction("Running finalization scripts (%d commands)...", len(suit.Cmds))
+				ss.SetAction("Running sequence scripts (%d commands)...", len(suit.SequenceCmds))
 			}
 		}
-		for idx, command := range suit.Cmds {
+		for idx, command := range suit.SequenceCmds {
 			fields := strings.Fields(command)
 			cmdName := command
 			if len(fields) > 0 {
@@ -615,13 +632,13 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 			}
 			if ss != nil {
 				if suit.Name != "" {
-					ss.SetAction("%s, [%d/%d] Finalization: %s", suit.Name, idx+1, len(suit.Cmds), cmdName)
+					ss.SetAction("%s, [%d/%d] Sequence: %s", suit.Name, idx+1, len(suit.SequenceCmds), cmdName)
 				} else {
-					ss.SetAction("[%d/%d] Finalization: %s", idx+1, len(suit.Cmds), cmdName)
+					ss.SetAction("[%d/%d] Sequence: %s", idx+1, len(suit.SequenceCmds), cmdName)
 				}
 			}
 			if dryRun {
-				logToFile(fmt.Sprintf("[DRY-RUN] Would run finalization command: %s", command))
+				logToFile(fmt.Sprintf("[DRY-RUN] Would run sequence command: %s", command))
 				continue
 			}
 			if len(fields) > 0 {
@@ -645,11 +662,100 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 			if dryRun {
 				suffix = " (simulated)"
 			}
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Finalization completed%s", utils.ColorGreen, utils.ColorReset, suffix))
+			ss.AddStep(fmt.Sprintf("%s[OK]%s Sequence commands completed%s", utils.ColorGreen, utils.ColorReset, suffix))
 		}
 	}
 
 	return installedPackages, failedPackages, nil
+}
+
+// applySysroot applies the sysroot/ or dirs/ filesystem overlay
+func applySysroot(dir string, suitName string, dryRun bool, isAccessory bool) {
+	ss := utils.GetSplitScreen()
+	sysrootPath := filepath.Join(dir, "sysroot")
+	if _, err := os.Stat(sysrootPath); os.IsNotExist(err) {
+		sysrootPath = filepath.Join(dir, "dirs")
+	}
+	if _, err := os.Stat(sysrootPath); err == nil {
+		if ss != nil {
+			if suitName != "" {
+				ss.SetAction("%s, applying system configuration (sysroot)...", suitName)
+			} else {
+				ss.SetAction("Applying system configuration (sysroot)...")
+			}
+		}
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would rsync sysroot configuration %s -> /", sysrootPath))
+			if !isAccessory && ss != nil {
+				ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied (simulated)", utils.ColorGreen, utils.ColorReset))
+			}
+		} else {
+			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
+			err := utils.ExecTee(cmd, tailorLogFile)
+			if !isAccessory && ss != nil {
+				if err != nil {
+					ss.AddStep(fmt.Sprintf("%s[WARN]%s System configuration applied with warnings", utils.ColorYellow, utils.ColorReset))
+				} else {
+					ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied", utils.ColorGreen, utils.ColorReset))
+				}
+			}
+		}
+	}
+}
+
+// executeFinalizeCommands runs finalization scripts and commands
+func executeFinalizeCommands(cmds []string, dir string, suitName string, dryRun bool) {
+	if len(cmds) == 0 {
+		return
+	}
+	ss := utils.GetSplitScreen()
+	if ss != nil {
+		if suitName != "" {
+			ss.SetAction("%s, running finalization scripts (%d commands)...", suitName, len(cmds))
+		} else {
+			ss.SetAction("Running finalization scripts (%d commands)...", len(cmds))
+		}
+	}
+	for idx, command := range cmds {
+		fields := strings.Fields(command)
+		cmdName := command
+		if len(fields) > 0 {
+			cmdName = filepath.Base(fields[0])
+		}
+		if ss != nil {
+			if suitName != "" {
+				ss.SetAction("%s, [%d/%d] Finalization: %s", suitName, idx+1, len(cmds), cmdName)
+			} else {
+				ss.SetAction("[%d/%d] Finalization: %s", idx+1, len(cmds), cmdName)
+			}
+		}
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would run finalization command: %s", command))
+			continue
+		}
+		if len(fields) > 0 {
+			relScript := filepath.Join(dir, fields[0])
+			if stat, err := os.Stat(relScript); err == nil && !stat.IsDir() {
+				rest := strings.TrimSpace(command[len(fields[0]):])
+				var fullCmd string
+				if rest != "" {
+					fullCmd = fmt.Sprintf("%s %s", relScript, rest)
+				} else {
+					fullCmd = fmt.Sprintf("%s %s", relScript, suitName)
+				}
+				_ = utils.ExecTee(fullCmd, tailorLogFile)
+				continue
+			}
+		}
+		_ = utils.ExecTee(command, tailorLogFile)
+	}
+	if ss != nil {
+		suffix := ""
+		if dryRun {
+			suffix = " (simulated)"
+		}
+		ss.AddStep(fmt.Sprintf("%s[OK]%s Finalization completed%s", utils.ColorGreen, utils.ColorReset, suffix))
+	}
 }
 
 func copySkelToUser(dryRun bool) {

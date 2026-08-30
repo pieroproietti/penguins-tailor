@@ -86,3 +86,73 @@ packages:
 		t.Errorf("expected 6 installed packages for accessory, got %d: %v", len(installed), installed)
 	}
 }
+
+func TestSequenceAndFinalizeSeparation(t *testing.T) {
+	tempDir := t.TempDir()
+
+	costumeYaml := `name: test-order
+sequence:
+  packages:
+    - pkg1
+  accessories:
+    - acc1
+  cmds:
+    - echo "sequence command 1"
+    - echo "sequence command 2"
+finalize:
+  customize: true
+  cmds:
+    - echo "finalize command 1"
+    - update-initramfs -u
+`
+	yamlPath := filepath.Join(tempDir, "index.yaml")
+	if err := os.WriteFile(yamlPath, []byte(costumeYaml), 0644); err != nil {
+		t.Fatalf("failed to write fixture yaml: %v", err)
+	}
+
+	suit, err := loadSuit(yamlPath)
+	if err != nil {
+		t.Fatalf("loadSuit failed: %v", err)
+	}
+
+	if len(suit.SequenceCmds) != 2 {
+		t.Errorf("expected 2 sequence commands, got %d: %v", len(suit.SequenceCmds), suit.SequenceCmds)
+	}
+	if len(suit.FinalizeCmds) != 2 {
+		t.Errorf("expected 2 finalize commands, got %d: %v", len(suit.FinalizeCmds), suit.FinalizeCmds)
+	}
+	if suit.SequenceCmds[0] != "echo \"sequence command 1\"" {
+		t.Errorf("unexpected first sequence command: %s", suit.SequenceCmds[0])
+	}
+	if suit.FinalizeCmds[1] != "update-initramfs -u" {
+		t.Errorf("unexpected second finalize command: %s", suit.FinalizeCmds[1])
+	}
+}
+
+func TestLegacyCmdsFallbackToFinalize(t *testing.T) {
+	tempDir := t.TempDir()
+
+	legacyYaml := `name: legacy-costume
+packages:
+  - pkg1
+cmds:
+  - echo "legacy cmd 1"
+  - echo "legacy cmd 2"
+`
+	yamlPath := filepath.Join(tempDir, "index.yaml")
+	if err := os.WriteFile(yamlPath, []byte(legacyYaml), 0644); err != nil {
+		t.Fatalf("failed to write fixture yaml: %v", err)
+	}
+
+	suit, err := loadSuit(yamlPath)
+	if err != nil {
+		t.Fatalf("loadSuit failed: %v", err)
+	}
+
+	if len(suit.SequenceCmds) != 0 {
+		t.Errorf("expected 0 sequence commands in legacy format, got %d", len(suit.SequenceCmds))
+	}
+	if len(suit.FinalizeCmds) != 2 {
+		t.Errorf("expected 2 finalize commands in legacy format, got %d", len(suit.FinalizeCmds))
+	}
+}

@@ -80,8 +80,11 @@ func Show(costumeName string) error {
 		}
 		fmt.Printf("  %-16s: %d packages (%s)\n", "Packages", len(suit.Packages), preview)
 	}
-	if len(suit.Cmds) > 0 {
-		fmt.Printf("  %-16s: %d finalization commands\n", "Commands", len(suit.Cmds))
+	if len(suit.SequenceCmds) > 0 {
+		fmt.Printf("  %-16s: %d sequence commands\n", "Sequence Cmds", len(suit.SequenceCmds))
+	}
+	if len(suit.FinalizeCmds) > 0 {
+		fmt.Printf("  %-16s: %d finalization commands\n", "Finalize Cmds", len(suit.FinalizeCmds))
 	}
 	fmt.Println()
 	return nil

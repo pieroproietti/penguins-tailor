@@ -29,6 +29,12 @@ type Suit struct {
 	// These packages are installed without DEBIAN_FRONTEND=noninteractive
 	// so the user can respond to license prompts and debconf questions.
 	PackagesInteractive []string `yaml:"-"`
+	// Populated by normalize() from Sequence.Cmds.
+	// Intermediate commands executed during the sequence before accessories.
+	SequenceCmds []string `yaml:"-"`
+	// Populated by normalize() from Finalize.Cmds or legacy top-level Cmds.
+	// Finalization commands executed at the very end of wear after all accessories.
+	FinalizeCmds []string `yaml:"-"`
 }
 
 // Sequence groups repositories, packages and accessories in nested form.
@@ -59,11 +65,15 @@ func (s *Suit) normalize() {
 	if s.Sequence != nil {
 		s.Packages = append(s.Packages, s.Sequence.Packages...)
 		s.Accessories = append(s.Accessories, s.Sequence.Accessories...)
-		s.Cmds = append(s.Cmds, s.Sequence.Cmds...)
 		s.PackagesNoRecommends = append(s.PackagesNoRecommends, s.Sequence.PackagesNoInstallRecommends...)
 		s.PackagesInteractive = append(s.PackagesInteractive, s.Sequence.PackagesInteractive...)
+		s.SequenceCmds = append(s.SequenceCmds, s.Sequence.Cmds...)
 	}
 	if s.Finalize != nil {
-		s.Cmds = append(s.Cmds, s.Finalize.Cmds...)
+		s.FinalizeCmds = append(s.FinalizeCmds, s.Finalize.Cmds...)
+	}
+	// If legacy flat YAML used cmds: at root level without finalize:
+	if s.Finalize == nil && len(s.Cmds) > 0 {
+		s.FinalizeCmds = append(s.FinalizeCmds, s.Cmds...)
 	}
 }

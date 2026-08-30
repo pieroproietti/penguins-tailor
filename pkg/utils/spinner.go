@@ -22,10 +22,10 @@ type Spinner struct {
 	startTime time.Time
 }
 
-// Frame ASCII robusti e compatibili con qualsiasi console (Linux TTY, VGA, SSH, seriale)
+// Robust ASCII frames compatible with any console (Linux TTY, VGA, SSH, serial)
 var asciiSpinnerFrames = []string{"|", "/", "-", "\\"}
 
-// isTerminal verifica se stdout è un terminale interattivo (TTY)
+// isTerminal checks if stdout is an interactive terminal (TTY)
 func isTerminal() bool {
 	if DisableColors {
 		return false
@@ -37,7 +37,7 @@ func isTerminal() bool {
 	return (stat.Mode() & os.ModeCharDevice) != 0
 }
 
-// NewSpinner crea un nuovo spinner con testo specificato
+// NewSpinner creates a new spinner with the specified text
 func NewSpinner(text string) *Spinner {
 	return &Spinner{
 		text:      text,
@@ -49,7 +49,7 @@ func NewSpinner(text string) *Spinner {
 	}
 }
 
-// Start avvia l'animazione dello spinner con indicatore di tempo trascorso
+// Start begins the spinner animation with elapsed time indicator
 func (s *Spinner) Start() *Spinner {
 	s.mu.Lock()
 	if s.running {
@@ -66,7 +66,7 @@ func (s *Spinner) Start() *Spinner {
 		return s
 	}
 
-	// Nasconde il cursore durante l'animazione
+	// Hide cursor during animation
 	fmt.Print("\033[?25l")
 
 	go func() {
@@ -109,7 +109,7 @@ func (s *Spinner) Start() *Spinner {
 					line += fmt.Sprintf(" %s- %s%s", colorize(ColorDim), sub, colorize(ColorReset))
 				}
 
-				// Sovrascrive la riga corrente
+				// Overwrite current line
 				fmt.Printf("\r\033[2K%s", line)
 			}
 		}
@@ -118,14 +118,14 @@ func (s *Spinner) Start() *Spinner {
 	return s
 }
 
-// UpdateText aggiorna il messaggio principale mostrato dallo spinner
+// UpdateText updates the main message displayed by the spinner
 func (s *Spinner) UpdateText(format string, a ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.text = fmt.Sprintf(format, a...)
 }
 
-// UpdateSubtext aggiorna il sotto-messaggio di dettaglio (es. nome pacchetto in corso)
+// UpdateSubtext updates the detail sub-message (e.g. current package name)
 func (s *Spinner) UpdateSubtext(format string, a ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -144,7 +144,7 @@ func (s *Spinner) stop() time.Duration {
 	s.mu.Unlock()
 
 	if s.isTTY {
-		// Ripristina il cursore
+		// Restore cursor
 		fmt.Print("\033[?25h")
 	}
 	return elapsed
@@ -162,7 +162,7 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf(" (%ds)", secs)
 }
 
-// Success ferma lo spinner e stampa [OK] con durata
+// Success stops the spinner and prints [OK] with duration
 func (s *Spinner) Success(format string, a ...interface{}) {
 	d := s.stop()
 	msg := fmt.Sprintf(format, a...) + formatDuration(d)
@@ -173,7 +173,7 @@ func (s *Spinner) Success(format string, a ...interface{}) {
 	}
 }
 
-// Fail ferma lo spinner e stampa [FAIL] con durata
+// Fail stops the spinner and prints [FAIL] with duration
 func (s *Spinner) Fail(format string, a ...interface{}) {
 	d := s.stop()
 	msg := fmt.Sprintf(format, a...) + formatDuration(d)
@@ -184,7 +184,7 @@ func (s *Spinner) Fail(format string, a ...interface{}) {
 	}
 }
 
-// Warn ferma lo spinner e stampa [WARN] con durata
+// Warn stops the spinner and prints [WARN] with duration
 func (s *Spinner) Warn(format string, a ...interface{}) {
 	d := s.stop()
 	msg := fmt.Sprintf(format, a...) + formatDuration(d)
@@ -195,7 +195,7 @@ func (s *Spinner) Warn(format string, a ...interface{}) {
 	}
 }
 
-// Info ferma lo spinner e stampa [INFO]
+// Info stops the spinner and prints [INFO]
 func (s *Spinner) Info(format string, a ...interface{}) {
 	s.stop()
 	msg := fmt.Sprintf(format, a...)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,14 +26,23 @@ type wearReport struct {
 // to the terminal buries the one or two things a user actually needs to
 // act on.
 func writeWearReport(r wearReport) (string, error) {
-	if err := os.MkdirAll("/var/log/tailor", 0755); err != nil {
-		return "", err
+	reportDir := "/var/log/tailor"
+	if err := os.MkdirAll(reportDir, 0755); err != nil {
+		reportDir = filepath.Join(os.TempDir(), "tailor")
+		if errTmp := os.MkdirAll(reportDir, 0755); errTmp != nil {
+			reportDir = os.TempDir()
+		}
 	}
-	path := fmt.Sprintf("/var/log/tailor/tailor-report-%s.txt", time.Now().Format("20060102-150405"))
+	path := filepath.Join(reportDir, fmt.Sprintf("tailor-report-%s.txt", time.Now().Format("20060102-150405")))
 
 	f, err := os.Create(path)
 	if err != nil {
-		return "", err
+		reportDir = os.TempDir()
+		path = filepath.Join(reportDir, fmt.Sprintf("tailor-report-%s.txt", time.Now().Format("20060102-150405")))
+		f, err = os.Create(path)
+		if err != nil {
+			return "", err
+		}
 	}
 	defer f.Close()
 

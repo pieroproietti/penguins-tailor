@@ -87,8 +87,8 @@ func loadSuit(yamlFile string) (*Suit, error) {
 	}
 	suit.normalize()
 
-	// Auto-discovery: se nella cartella è presente packages.yaml o packages.yml,
-	// carica e fonde automaticamente i pacchetti nell'elenco suit.Packages
+	// Auto-discovery: if packages.yaml or packages.yml is present in the directory,
+	// automatically load and merge packages into suit.Packages
 	dir := filepath.Dir(yamlFile)
 	if extraPkgs := loadPackagesYaml(dir); len(extraPkgs) > 0 {
 		seen := make(map[string]struct{}, len(suit.Packages)+len(extraPkgs))
@@ -106,7 +106,7 @@ func loadSuit(yamlFile string) (*Suit, error) {
 	return &suit, nil
 }
 
-// loadPackagesYaml cerca e carica packages.yaml o packages.yml nella cartella indicata
+// loadPackagesYaml searches and loads packages.yaml or packages.yml in the specified directory
 func loadPackagesYaml(dir string) []string {
 	for _, name := range []string{"packages.yaml", "packages.yml"} {
 		path := filepath.Join(dir, name)

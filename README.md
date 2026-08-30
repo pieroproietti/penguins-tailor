@@ -69,11 +69,12 @@ sudo make install
   ```bash
   sudo tailor wear colibri
 
-  # Apply a costume from a specific branch of the wardrobe
-  sudo tailor wear colibri -b develop
+  # Simulate costume application without modifying the system (does not require root)
+  tailor wear colibri --dry-run
   ```
   **Flags:**
   - `-b, --branch <branch>`: Branch of the costumes repository.
+  - `-n, --dry-run`: Simulate costume installation without making changes (allows running without root).
   - `--no-acc`: Skip installing accessory packages.
   - `--no-firm`: Skip installing firmware accessories.
   - `--linear`: Use linear standard output without split screen TUI.

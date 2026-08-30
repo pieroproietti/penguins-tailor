@@ -8,15 +8,19 @@ import (
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
 
-// setupRepositories applica la sezione "repositories" della forma annidata
-func setupRepositories(repos *Repositories, suitName string) {
+// setupRepositories applies the "repositories" section of the nested suit format
+func setupRepositories(repos *Repositories, suitName string, dryRun bool) {
 	if repos == nil {
 		return
 	}
 
 	if len(repos.SourcesList) > 0 {
-		if err := enableAptComponents(repos.SourcesList); err != nil {
-			logToFile(WarnPrefix(suitName) + "sources.list: " + err.Error())
+		if dryRun {
+			logToFile(WarnPrefix(suitName) + "[DRY-RUN] Would enable apt components: " + strings.Join(repos.SourcesList, " "))
+		} else {
+			if err := enableAptComponents(repos.SourcesList); err != nil {
+				logToFile(WarnPrefix(suitName) + "sources.list: " + err.Error())
+			}
 		}
 	}
 
@@ -25,6 +29,10 @@ func setupRepositories(repos *Repositories, suitName string) {
 		for idx, command := range repos.SourcesListD {
 			if ss := utils.GetSplitScreen(); ss != nil {
 				ss.SetAction("Third-party repo [%d/%d]", idx+1, len(repos.SourcesListD))
+			}
+			if dryRun {
+				logToFile(WarnPrefix(suitName) + "[DRY-RUN] Would execute repository command: " + command)
+				continue
 			}
 			if err := utils.ExecTee(command, tailorLogFile); err != nil {
 				logToFile(WarnPrefix(suitName) + "repository command failed: " + command + ": " + err.Error())
@@ -37,7 +45,9 @@ func setupRepositories(repos *Repositories, suitName string) {
 		if ss := utils.GetSplitScreen(); ss != nil {
 			ss.SetAction("Updating package index (apt-get update)...")
 		}
-		_ = utils.ExecTee("apt-get update", tailorLogFile)
+		if !dryRun {
+			_ = utils.ExecTee("apt-get update", tailorLogFile)
+		}
 	}
 
 	if repos.Upgrade {
@@ -45,16 +55,18 @@ func setupRepositories(repos *Repositories, suitName string) {
 		if ss := utils.GetSplitScreen(); ss != nil {
 			ss.SetAction("Upgrading packages (apt-get upgrade)...")
 		}
-		_ = utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
+		if !dryRun {
+			_ = utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
+		}
 	}
 }
 
-// WarnPrefix genera un prefisso omogeneo per i log di questo pacchetto.
+// WarnPrefix generates a consistent prefix for logs of this package.
 func WarnPrefix(suitName string) string {
 	return "[" + suitName + "] "
 }
 
-// enableAptComponents assicura che i componenti richiesti siano abilitati
+// enableAptComponents ensures the requested components are enabled
 func enableAptComponents(components []string) error {
 	const path = "/etc/apt/sources.list"
 

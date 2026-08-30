@@ -29,4 +29,17 @@ func TestWearCmdFlags(t *testing.T) {
 	if linearFlag == nil {
 		t.Fatal("expected --linear flag to exist")
 	}
+
+	dryRunFlag := cmd.Flags().Lookup("dry-run")
+	if dryRunFlag == nil {
+		t.Fatal("expected --dry-run flag to exist")
+	}
+	if dryRunFlag.Shorthand != "n" {
+		t.Errorf("expected shorthand 'n' for --dry-run, got %q", dryRunFlag.Shorthand)
+	}
+
+	simulateFlag := cmd.Flags().Lookup("simulate")
+	if simulateFlag == nil {
+		t.Fatal("expected --simulate flag to exist")
+	}
 }

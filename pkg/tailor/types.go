@@ -1,6 +1,6 @@
 package tailor
 
-// WardrobeInfo per List e Show rapido
+// WardrobeInfo for quick List and Show
 type WardrobeInfo struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
@@ -10,7 +10,7 @@ type WardrobeInfo struct {
 	DisplayManagerNotice bool `yaml:"display_manager_notice"`
 }
 
-// Suit rappresenta il nuovo standard index.yaml
+// Suit represents the index.yaml standard structure
 type Suit struct {
 	Name                 string        `yaml:"name"`
 	Description          string        `yaml:"description"`
@@ -24,14 +24,14 @@ type Suit struct {
 	Finalize             *Finalize     `yaml:"finalize"`
 	Reboot               bool          `yaml:"reboot"`
 	DisplayManagerNotice bool          `yaml:"display_manager_notice"`
-	PackagesNoRecommends []string `yaml:"-"`
-	// Popolato da normalize() a partire da Sequence.PackagesInteractive.
+	PackagesNoRecommends []string      `yaml:"-"`
+	// Populated by normalize() from Sequence.PackagesInteractive.
 	// These packages are installed without DEBIAN_FRONTEND=noninteractive
 	// so the user can respond to license prompts and debconf questions.
 	PackagesInteractive []string `yaml:"-"`
 }
 
-// Sequence raccoglie repository, pacchetti e accessori nella forma annidata.
+// Sequence groups repositories, packages and accessories in nested form.
 type Sequence struct {
 	Repositories                *Repositories `yaml:"repositories"`
 	Packages                    []string      `yaml:"packages"`
@@ -41,15 +41,15 @@ type Sequence struct {
 	Cmds                        []string      `yaml:"cmds"`
 }
 
-// Repositories descrive le modifiche alle sorgenti apt prima dell'installazione.
+// Repositories describes apt source modifications before installation.
 type Repositories struct {
-	SourcesList  []string `yaml:"sources_list"`   // componenti da abilitare: main, contrib, non-free...
-	SourcesListD []string `yaml:"sources_list_d"` // comandi shell letterali (aggiunta repo di terze parti)
+	SourcesList  []string `yaml:"sources_list"`   // components to enable: main, contrib, non-free...
+	SourcesListD []string `yaml:"sources_list_d"` // shell command strings (third-party repo setup)
 	Update       bool     `yaml:"update"`
 	Upgrade      bool     `yaml:"upgrade"`
 }
 
-// Finalize raccoglie i comandi eseguiti a fine costume nella forma annidata.
+// Finalize groups commands executed at the end of costume application in nested form.
 type Finalize struct {
 	Customize bool     `yaml:"customize"`
 	Cmds      []string `yaml:"cmds"`

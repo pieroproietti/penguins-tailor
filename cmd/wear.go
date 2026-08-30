@@ -10,13 +10,14 @@ func wearCmd() *cobra.Command {
 	var noFirm bool
 	var linear bool
 	var branch string
+	var dryRun bool
 
 	cmd := &cobra.Command{
 		Use:   "wear [costume]",
 		Short: "Wear a costume from the wardrobe",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return tailor.Wear(args[0], noAcc, noFirm, linear, branch)
+			return tailor.Wear(args[0], noAcc, noFirm, linear, branch, dryRun)
 		},
 	}
 
@@ -26,6 +27,9 @@ func wearCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&linear, "linear", false, "Use linear standard output without split screen TUI")
 	cmd.Flags().BoolVar(&linear, "no-split", false, "Alias for --linear")
 	_ = cmd.Flags().MarkHidden("no-split")
+	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Simulate costume installation without making changes")
+	cmd.Flags().BoolVar(&dryRun, "simulate", false, "Alias for --dry-run")
+	_ = cmd.Flags().MarkHidden("simulate")
 
 	return cmd
 }

@@ -10,8 +10,8 @@ import (
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
 
-func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string) error {
-	if os.Geteuid() != 0 {
+func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string, dryRun bool) error {
+	if os.Geteuid() != 0 && !dryRun {
 		utils.LogError("'tailor wear' needs to install packages and write to system paths; run it as root (e.g. 'sudo tailor wear %s').", costumeName)
 		return fmt.Errorf("must be run as root")
 	}
@@ -92,6 +92,13 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 			notes = "Preseed applied"
 		}
 	}
+	if dryRun {
+		if notes != "" {
+			notes = "[DRY-RUN] " + notes
+		} else {
+			notes = "[DRY-RUN] Simulation mode (no changes will be applied)"
+		}
+	}
 
 	headerCfg := utils.SplitScreenConfig{
 		Atelier: origin,
@@ -114,24 +121,32 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	// DKMS safety: ensure headers for running kernel are present
 	if ss != nil {
 		ss.SetAction("Checking kernel headers for DKMS...")
-		if err := ensureKernelHeaders(); err != nil {
+		if err := ensureKernelHeaders(dryRun); err != nil {
 			ss.AddStep(fmt.Sprintf("%s[WARN]%s Kernel headers verification completed with warnings", utils.ColorYellow, utils.ColorReset))
 		} else {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Kernel headers verified", utils.ColorGreen, utils.ColorReset))
+			statusMsg := "Kernel headers verified"
+			if dryRun {
+				statusMsg += " (simulated)"
+			}
+			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
 		}
 	} else {
 		spHeaders := utils.NewSpinner("Checking kernel headers for DKMS...")
 		spHeaders.Start()
-		if err := ensureKernelHeaders(); err != nil {
+		if err := ensureKernelHeaders(dryRun); err != nil {
 			spHeaders.Warn("Kernel headers verification completed with warnings")
 		} else {
-			spHeaders.Success("Kernel headers verified")
+			statusMsg := "Kernel headers verified"
+			if dryRun {
+				statusMsg += " (simulated)"
+			}
+			spHeaders.Success("%s", statusMsg)
 		}
 	}
 
 	SetLicensePromptPackages(suit.PackagesInteractive)
 
-	installedPackages, failedPackages, err := applySuit(costumeDir, suit)
+	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun)
 	if err != nil {
 		return err
 	}
@@ -170,7 +185,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					} else {
 						utils.PrintSubSection("-->", fmt.Sprintf("[%d/%d] Accessory: %s%s", idx+1, len(suit.Accessories), accName, accPreseedSuffix))
 					}
-					accInstalled, accFailed, _ := applySuit(accDir, accSuit)
+					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun)
 					installedPackages = append(installedPackages, accInstalled...)
 					failedPackages = append(failedPackages, accFailed...)
 				} else {
@@ -191,10 +206,12 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	}
 
 	// DKMS healing
-	if ss != nil {
-		ss.SetAction("Healing DKMS state...")
+	if !dryRun {
+		if ss != nil {
+			ss.SetAction("Healing DKMS state...")
+		}
+		failedPackages = healAndRetryFailed(failedPackages)
 	}
-	failedPackages = healAndRetryFailed(failedPackages)
 
 	// User environment synchronization
 	targetUser := getTargetUsername()
@@ -202,9 +219,13 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		if ss != nil {
 			ss.SetAction("Synchronizing user environment (/etc/skel -> /home/%s)...", targetUser)
 		}
-		copySkelToUser()
+		copySkelToUser(dryRun)
 		if ss != nil {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s User environment synchronized (%s)", utils.ColorGreen, targetUser, utils.ColorReset))
+			statusMsg := fmt.Sprintf("User environment synchronized (%s)", targetUser)
+			if dryRun {
+				statusMsg += " (simulated)"
+			}
+			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
 		}
 	}
 
@@ -220,8 +241,12 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		FailedInstall: failedPackages,
 	})
 
+	costumeSummaryVal := suit.Name
+	if dryRun {
+		costumeSummaryVal = fmt.Sprintf("%s [DRY-RUN]", suit.Name)
+	}
 	summaryRows := [][2]string{
-		{"Costume / Oggetto", suit.Name},
+		{"Costume / Item", costumeSummaryVal},
 	}
 	if origin != "" {
 		atelierVal := origin
@@ -230,23 +255,35 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		}
 		summaryRows = append(summaryRows, [2]string{"Atelier", atelierVal})
 	}
+	pkgInstalledLabel := "Packages installed"
+	if dryRun {
+		pkgInstalledLabel = "Packages to install"
+	}
 	summaryRows = append(summaryRows,
-		[2]string{"Packages installed", fmt.Sprintf("%d", len(installedPackages))},
+		[2]string{pkgInstalledLabel, fmt.Sprintf("%d", len(installedPackages))},
 		[2]string{"Packages NOT installed", fmt.Sprintf("%d", len(failedPackages))},
 	)
 	if reportErr == nil {
-		summaryRows = append(summaryRows, [2]string{"Report dettagliato", reportPath})
+		summaryRows = append(summaryRows, [2]string{"Detailed report", reportPath})
 	}
-	summaryRows = append(summaryRows, [2]string{"Log di sistema", tailorLogFile})
+	if !dryRun {
+		summaryRows = append(summaryRows, [2]string{"System log", tailorLogFile})
+	}
 
-	utils.PrintSummaryBox("✨ VESTIZIONE COMPLETATA!", summaryRows)
+	summaryTitle := "✨ WEAR COMPLETED!"
+	if dryRun {
+		summaryTitle = "✨ WEAR COMPLETED (SIMULATION / DRY-RUN)!"
+	}
+	utils.PrintSummaryBox(summaryTitle, summaryRows)
 
-	if suit.Reboot {
+	if suit.Reboot && !dryRun {
 		fmt.Printf("\n%s%s⚠ This costume recommends restarting the system upon completion.%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
 	}
-	printKernelCleanupReminder()
-	if suit.DisplayManagerNotice {
-		printDisplayManagerNotice()
+	if !dryRun {
+		printKernelCleanupReminder()
+		if suit.DisplayManagerNotice {
+			printDisplayManagerNotice()
+		}
 	}
 	return nil
 }
@@ -313,7 +350,7 @@ func currentDistroCodename() string {
 }
 
 // ensureKernelHeaders installs the kernel headers matching the currently running kernel.
-func ensureKernelHeaders() error {
+func ensureKernelHeaders(dryRun bool) error {
 	out, err := exec.Command("uname", "-r").Output()
 	if err != nil {
 		logToFile(fmt.Sprintf("WARNING: could not determine running kernel version: %v", err))
@@ -329,6 +366,10 @@ func ensureKernelHeaders() error {
 		arch = "amd64"
 	}
 	pkgs := fmt.Sprintf("linux-headers-%s linux-headers-%s", release, arch)
+	if dryRun {
+		logToFile(fmt.Sprintf("[DRY-RUN] Would ensure kernel headers are present: %s", pkgs))
+		return nil
+	}
 	logToFile(fmt.Sprintf("Ensuring kernel headers are present before DKMS installs: %s", pkgs))
 	return utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y "+pkgs, tailorLogFile)
 }
@@ -371,7 +412,7 @@ func healAndRetryFailed(failed []string) []string {
 }
 
 // applySuit applies a costume or accessory definition with clean spinners
-func applySuit(dir string, suit *Suit) ([]string, []string, error) {
+func applySuit(dir string, suit *Suit, dryRun bool) ([]string, []string, error) {
 	var installedPackages []string
 	var failedPackages []string
 	ss := utils.GetSplitScreen()
@@ -381,8 +422,12 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Applying preseed selections (%s)...", filepath.Base(preseedFile))
 		}
-		if err := applyPreseed(preseedFile, suit.Name); err != nil {
-			logToFile(WarnPrefix(suit.Name) + fmt.Sprintf("Preseed application warning: %v", err))
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would apply preseed: %s", preseedFile))
+		} else {
+			if err := applyPreseed(preseedFile, suit.Name); err != nil {
+				logToFile(WarnPrefix(suit.Name) + fmt.Sprintf("Preseed application warning: %v", err))
+			}
 		}
 	}
 
@@ -391,9 +436,13 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Configuring package repositories & updating cache...")
 		}
-		setupRepositories(suit.Sequence.Repositories, suit.Name)
+		setupRepositories(suit.Sequence.Repositories, suit.Name, dryRun)
 		if ss != nil {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Repositories configured & updated", utils.ColorGreen, utils.ColorReset))
+			statusMsg := "Repositories configured & updated"
+			if dryRun {
+				statusMsg += " (simulated)"
+			}
+			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
 		}
 	}
 
@@ -402,15 +451,25 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Installing packages (%d packages)...", len(suit.Packages))
 		}
-		failed := installWithRetries(suit.Packages, 3)
-		failedPackages = append(failedPackages, failed...)
-		installed := diffStr(suit.Packages, failed)
-		installedPackages = append(installedPackages, installed...)
+		var failed []string
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages: %v", len(suit.Packages), suit.Packages))
+			installedPackages = append(installedPackages, suit.Packages...)
+		} else {
+			failed = installWithRetries(suit.Packages, 3)
+			failedPackages = append(failedPackages, failed...)
+			installed := diffStr(suit.Packages, failed)
+			installedPackages = append(installedPackages, installed...)
+		}
 		if ss != nil {
 			if len(failed) > 0 {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages (%d failed)", utils.ColorYellow, utils.ColorReset, len(installed), len(failed)))
+				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.Packages)-len(failed), len(failed)))
 			} else {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages", utils.ColorGreen, utils.ColorReset, len(installed)))
+				suffix := ""
+				if dryRun {
+					suffix = " (simulated)"
+				}
+				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages%s", utils.ColorGreen, utils.ColorReset, len(suit.Packages), suffix))
 			}
 		}
 	}
@@ -420,15 +479,25 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Installing packages without recommends (%d packages)...", len(suit.PackagesNoRecommends))
 		}
-		failed := installNoRecommends(suit.PackagesNoRecommends)
-		failedPackages = append(failedPackages, failed...)
-		installed := diffStr(suit.PackagesNoRecommends, failed)
-		installedPackages = append(installedPackages, installed...)
+		var failed []string
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages without recommends: %v", len(suit.PackagesNoRecommends), suit.PackagesNoRecommends))
+			installedPackages = append(installedPackages, suit.PackagesNoRecommends...)
+		} else {
+			failed = installNoRecommends(suit.PackagesNoRecommends)
+			failedPackages = append(failedPackages, failed...)
+			installed := diffStr(suit.PackagesNoRecommends, failed)
+			installedPackages = append(installedPackages, installed...)
+		}
 		if ss != nil {
 			if len(failed) > 0 {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages without recommends (%d failed)", utils.ColorYellow, utils.ColorReset, len(installed), len(failed)))
+				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages without recommends (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.PackagesNoRecommends)-len(failed), len(failed)))
 			} else {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages without recommends", utils.ColorGreen, utils.ColorReset, len(installed)))
+				suffix := ""
+				if dryRun {
+					suffix = " (simulated)"
+				}
+				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages without recommends%s", utils.ColorGreen, utils.ColorReset, len(suit.PackagesNoRecommends), suffix))
 			}
 		}
 	}
@@ -438,15 +507,25 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Configuring %d interactive packages...", len(suit.PackagesInteractive))
 		}
-		failed := installInteractive(suit.PackagesInteractive)
-		failedPackages = append(failedPackages, failed...)
-		installed := diffStr(suit.PackagesInteractive, failed)
-		installedPackages = append(installedPackages, installed...)
+		var failed []string
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would configure %d interactive packages: %v", len(suit.PackagesInteractive), suit.PackagesInteractive))
+			installedPackages = append(installedPackages, suit.PackagesInteractive...)
+		} else {
+			failed = installInteractive(suit.PackagesInteractive)
+			failedPackages = append(failedPackages, failed...)
+			installed := diffStr(suit.PackagesInteractive, failed)
+			installedPackages = append(installedPackages, installed...)
+		}
 		if ss != nil {
 			if len(failed) > 0 {
 				ss.AddStep(fmt.Sprintf("%s[WARN]%s Some interactive packages could not be installed", utils.ColorYellow, utils.ColorReset))
 			} else {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Interactive packages configured", utils.ColorGreen, utils.ColorReset))
+				suffix := ""
+				if dryRun {
+					suffix = " (simulated)"
+				}
+				ss.AddStep(fmt.Sprintf("%s[OK]%s Interactive packages configured%s", utils.ColorGreen, utils.ColorReset, suffix))
 			}
 		}
 	}
@@ -460,13 +539,20 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 		if ss != nil {
 			ss.SetAction("Applying filesystem overlay (sysroot)...")
 		}
-		cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
-		err := utils.ExecTee(cmd, tailorLogFile)
-		if ss != nil {
-			if err != nil {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Filesystem overlay applied with warnings", utils.ColorYellow, utils.ColorReset))
-			} else {
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Filesystem overlay applied", utils.ColorGreen, utils.ColorReset))
+		if dryRun {
+			logToFile(fmt.Sprintf("[DRY-RUN] Would rsync overlay %s -> /", sysrootPath))
+			if ss != nil {
+				ss.AddStep(fmt.Sprintf("%s[OK]%s Filesystem overlay applied (simulated)", utils.ColorGreen, utils.ColorReset))
+			}
+		} else {
+			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
+			err := utils.ExecTee(cmd, tailorLogFile)
+			if ss != nil {
+				if err != nil {
+					ss.AddStep(fmt.Sprintf("%s[WARN]%s Filesystem overlay applied with warnings", utils.ColorYellow, utils.ColorReset))
+				} else {
+					ss.AddStep(fmt.Sprintf("%s[OK]%s Filesystem overlay applied", utils.ColorGreen, utils.ColorReset))
+				}
 			}
 		}
 	}
@@ -485,6 +571,10 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 			if ss != nil {
 				ss.SetAction("[%d/%d] Finalization: %s", idx+1, len(suit.Cmds), cmdName)
 			}
+			if dryRun {
+				logToFile(fmt.Sprintf("[DRY-RUN] Would run finalization command: %s", command))
+				continue
+			}
 			if len(fields) > 0 {
 				relScript := filepath.Join(dir, fields[0])
 				if stat, err := os.Stat(relScript); err == nil && !stat.IsDir() {
@@ -502,14 +592,18 @@ func applySuit(dir string, suit *Suit) ([]string, []string, error) {
 			_ = utils.ExecTee(command, tailorLogFile)
 		}
 		if ss != nil {
-			ss.AddStep(fmt.Sprintf("%s[OK]%s Finalization completed", utils.ColorGreen, utils.ColorReset))
+			suffix := ""
+			if dryRun {
+				suffix = " (simulated)"
+			}
+			ss.AddStep(fmt.Sprintf("%s[OK]%s Finalization completed%s", utils.ColorGreen, utils.ColorReset, suffix))
 		}
 	}
 
 	return installedPackages, failedPackages, nil
 }
 
-func copySkelToUser() {
+func copySkelToUser(dryRun bool) {
 	targetUser := os.Getenv("SUDO_USER")
 	var userHome string
 	if targetUser != "" {
@@ -521,6 +615,11 @@ func copySkelToUser() {
 
 	if targetUser == "" || targetUser == "root" {
 		logToFile("WARNING: unable to determine a non-root target user, skipping /etc/skel sync")
+		return
+	}
+
+	if dryRun {
+		logToFile(fmt.Sprintf("[DRY-RUN] Would sync /etc/skel -> %s", userHome))
 		return
 	}
 

@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-// Colori e stili ANSI
+// ANSI colors and styles
 const (
 	ColorBold    = "\033[1m"
 	ColorDim     = "\033[2m"
@@ -22,20 +22,20 @@ const (
 	ColorWhite   = "\033[1;37m"
 )
 
-// DisableColors permette di disattivare i colori.
+// DisableColors allows disabling color output.
 var DisableColors bool
 
 func init() {
-	// Auto-rilevamento: se os.Stdout NON è un terminale (es. rediretto in un file log o pipe),
-	// spegne i colori in automatico per evitare caratteri ANSI sporchi nel testo.
+	// Auto-detection: if os.Stdout is NOT a terminal (e.g., redirected to a log file or pipe),
+	// automatically turn off colors to prevent dirty ANSI characters in text.
 	stat, _ := os.Stdout.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		DisableColors = true
 	}
 }
 
-// colorize restituisce il codice ANSI solo se i colori sono abilitati,
-// altrimenti restituisce una stringa vuota, mantenendo il log pulito.
+// colorize returns the ANSI code only if colors are enabled,
+// otherwise returns an empty string to keep logs clean.
 func colorize(colorCode string) string {
 	if DisableColors {
 		return ""
@@ -43,43 +43,43 @@ func colorize(colorCode string) string {
 	return colorCode
 }
 
-// --- SISTEMA DI LOGGING CENTRALIZZATO ---
+// --- CENTRALIZED LOGGING SYSTEM ---
 
-// LogNormal stampa un messaggio informativo con il tag [tailor]
+// LogNormal prints an informational message with the [tailor] tag
 func LogNormal(format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	fmt.Printf("%s[tailor]%s %s\n", colorize(ColorCyan), colorize(ColorReset), msg)
 }
 
-// LogSuccess stampa un messaggio di successo
+// LogSuccess prints a success message
 func LogSuccess(format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	fmt.Printf("%s[tailor]%s %s\n", colorize(ColorGreen), colorize(ColorReset), msg)
 }
 
-// LogWarning stampa un messaggio di avviso
+// LogWarning prints a warning message
 func LogWarning(format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	fmt.Printf("%s[WARNING]%s %s\n", colorize(ColorYellow), colorize(ColorReset), msg)
 }
 
-// LogError stampa un messaggio di errore sullo STANDARD ERROR
+// LogError prints an error message to standard error
 func LogError(format string, a ...interface{}) {
 	msg := fmt.Sprintf(format, a...)
 	fmt.Fprintf(os.Stderr, "\n%s[ERROR]%s %s\n", colorize(ColorRed), colorize(ColorReset), msg)
 }
 
-// Fatal stampa un errore ed esce con codice 1
+// Fatal prints an error and exits with code 1
 func Fatal(format string, a ...interface{}) {
 	LogError(format, a...)
 	os.Exit(1)
 }
 
-// --- HELPER VISUALI PER FORMATTAZIONE E SEZIONI ---
+// --- VISUAL HELPERS FOR FORMATTING AND SECTIONS ---
 
 const sectionDivider = "============================================================"
 
-// PrintBannerConfig stampa un'intestazione principale incorniciata con configurazione strutturata
+// PrintBannerConfig prints a boxed main header with structured configuration
 func PrintBannerConfig(cfg SplitScreenConfig) {
 	lines := FormatHeaderLines(cfg)
 	fmt.Println()
@@ -90,7 +90,7 @@ func PrintBannerConfig(cfg SplitScreenConfig) {
 	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
 }
 
-// PrintBanner stampa un'intestazione principale incorniciata
+// PrintBanner prints a boxed main header
 func PrintBanner(icon, title, subtitle string) {
 	PrintBannerConfig(SplitScreenConfig{
 		Icon:    icon,
@@ -99,7 +99,7 @@ func PrintBanner(icon, title, subtitle string) {
 	})
 }
 
-// PrintSection stampa un separatore di sezione principale
+// PrintSection prints a main section divider
 func PrintSection(icon, title string) {
 	fmt.Println()
 	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
@@ -107,13 +107,13 @@ func PrintSection(icon, title string) {
 	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
 }
 
-// PrintSubSection stampa un'intestazione di sotto-sezione (es. per singoli accessori)
+// PrintSubSection prints a subsection header (e.g. for individual accessories)
 func PrintSubSection(icon, title string) {
 	fmt.Println()
 	fmt.Printf("%s%s%s %s%s%s\n", colorize(ColorCyan), icon, colorize(ColorReset), colorize(ColorBold), title, colorize(ColorReset))
 }
 
-// PrintSummaryBox stampa il riepilogo finale formattato
+// PrintSummaryBox prints the formatted final summary box
 func PrintSummaryBox(title string, rows [][2]string) {
 	fmt.Println()
 	fmt.Printf("%s%s%s\n", colorize(ColorGreen), sectionDivider, colorize(ColorReset))

@@ -61,13 +61,13 @@ func Show(costumeName string) error {
 		fmt.Printf("  %-16s: %s\n", "Atelier", origin)
 	}
 	if suit.Author != "" {
-		fmt.Printf("  %-16s: %s\n", "Autore", suit.Author)
+		fmt.Printf("  %-16s: %s\n", "Author", suit.Author)
 	}
 	if len(suit.Distributions) > 0 {
-		fmt.Printf("  %-16s: %s\n", "Distribuzioni", strings.Join(suit.Distributions, ", "))
+		fmt.Printf("  %-16s: %s\n", "Distributions", strings.Join(suit.Distributions, ", "))
 	}
 	if len(suit.Accessories) > 0 {
-		fmt.Printf("  %-16s: %s\n", "Accessori", strings.Join(suit.Accessories, ", "))
+		fmt.Printf("  %-16s: %s\n", "Accessories", strings.Join(suit.Accessories, ", "))
 	}
 	if len(suit.Packages) > 0 {
 		limit := 5
@@ -78,10 +78,10 @@ func Show(costumeName string) error {
 		if len(suit.Packages) > limit {
 			preview += "..."
 		}
-		fmt.Printf("  %-16s: %d pacchetti (%s)\n", "Pacchetti", len(suit.Packages), preview)
+		fmt.Printf("  %-16s: %d packages (%s)\n", "Packages", len(suit.Packages), preview)
 	}
 	if len(suit.Cmds) > 0 {
-		fmt.Printf("  %-16s: %d comandi di finalizzazione\n", "Comandi", len(suit.Cmds))
+		fmt.Printf("  %-16s: %d finalization commands\n", "Commands", len(suit.Cmds))
 	}
 	fmt.Println()
 	return nil

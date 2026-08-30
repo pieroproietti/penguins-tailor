@@ -23,7 +23,7 @@ func ensureRootPath() {
 	}
 }
 
-// Exec esegue un comando sh e mostra l'output in tempo reale sul terminale.
+// Exec executes a shell command and displays real-time output in the terminal.
 func Exec(command string) error {
 	ensureRootPath()
 
@@ -34,8 +34,8 @@ func Exec(command string) error {
 	return cmd.Run()
 }
 
-// ExecTee esegue un comando sh con stdin interattivo, inviando stdout e stderr
-// sia al terminale (o alla scrolling region DECSTBM) sia al file di log specificato.
+// ExecTee executes a shell command with interactive stdin, streaming stdout and stderr
+// both to the terminal (or DECSTBM scrolling region) and to the specified log file.
 func ExecTee(command string, logFilePath string) error {
 	ensureRootPath()
 
@@ -59,9 +59,9 @@ func ExecTee(command string, logFilePath string) error {
 	return cmd.Run()
 }
 
-// ExecInteractive esegue un comando interattivo. Se lo split screen è attivo,
-// rilascia temporaneamente lo scroll region per consentire eventuale full-screen curses/dialog,
-// e al termine lo ripristina.
+// ExecInteractive executes an interactive command. If split screen is active,
+// it temporarily releases the scrolling region to allow fullscreen curses/dialog interfaces,
+// restoring it upon completion.
 func ExecInteractive(command string, logFilePath string) error {
 	ensureRootPath()
 
@@ -72,7 +72,7 @@ func ExecInteractive(command string, logFilePath string) error {
 	return ExecTee(command, logFilePath)
 }
 
-// ExecQuiet esegue un comando senza mostrare nulla
+// ExecQuiet executes a command without printing anything to stdout/stderr.
 func ExecQuiet(command string) error {
 	ensureRootPath()
 
@@ -80,17 +80,17 @@ func ExecQuiet(command string) error {
 	return cmd.Run()
 }
 
-// ExecLog esegue un comando sh e redirige stdout e stderr nel file di log specificato.
+// ExecLog executes a shell command and redirects stdout and stderr to the specified log file.
 func ExecLog(command string, logFilePath string) error {
 	return ExecLogMonitor(command, logFilePath, nil)
 }
 
-// ExecLogMonitor esegue un comando sh, scrive tutto nel logfile e notifica onLine riga per riga
+// ExecLogMonitor executes a shell command, writing everything to logfile and notifying onLine per line.
 func ExecLogMonitor(command string, logFilePath string, onLine func(line string)) error {
 	ensureRootPath()
 
 	if err := os.MkdirAll(filepath.Dir(logFilePath), 0755); err != nil {
-		// In caso di errore directory, prosegue
+		// In case of directory error, continue
 	}
 
 	f, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -133,7 +133,7 @@ func ExecLogMonitor(command string, logFilePath string, onLine func(line string)
 	return cmd.Wait()
 }
 
-// ExecCapture esegue un comando e restituisce l'output come stringa
+// ExecCapture executes a command and returns the output as a string.
 func ExecCapture(command string) (string, error) {
 	ensureRootPath()
 
@@ -143,7 +143,7 @@ func ExecCapture(command string) (string, error) {
 	return out.String(), cmd.Run()
 }
 
-// ExecCaptureCombined esegue un comando e restituisce sia stdout che stderr integrati come stringa
+// ExecCaptureCombined executes a command and returns combined stdout and stderr as a string.
 func ExecCaptureCombined(command string) (string, error) {
 	ensureRootPath()
 

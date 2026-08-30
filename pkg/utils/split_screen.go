@@ -46,15 +46,15 @@ type SplitScreenConfig struct {
 }
 
 // FormatHeaderLines constructs the header lines according to layout requirements:
-// 1ª riga: Atelier: <remote/origin> (con eventuale branch se non default)
-// 2ª riga: Costume: <costume> (o Accessory: <accessory>)
-// 3ª riga: <descrizione>
+// Line 1: Atelier: <remote/origin> (with branch if not default)
+// Line 2: Costume: <costume> (or Accessory: <accessory>)
+// Line 3: <description>
 func FormatHeaderLines(cfg SplitScreenConfig) []string {
 	var lines []string
 
 	icon := cfg.Icon
 
-	// 1ª riga: Atelier
+	// Line 1: Atelier
 	if cfg.Atelier != "" {
 		atelierVal := cfg.Atelier
 		if cfg.Branch != "" && cfg.Branch != "main" && cfg.Branch != "master" {
@@ -69,7 +69,7 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 		lines = append(lines, line1)
 	}
 
-	// 2ª riga: Costume / Accessory
+	// Line 2: Costume / Accessory
 	if cfg.Costume != "" {
 		var line2 string
 		indent := "  "
@@ -94,7 +94,7 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 		lines = append(lines, line2)
 	}
 
-	// 3ª riga: Descrizione (senza label prefisso)
+	// Line 3: Description (without label prefix)
 	if cfg.Notes != "" {
 		indent := "  "
 		if icon != "" {
@@ -252,7 +252,7 @@ func (ss *SplitScreen) drawFullLayout() {
 }
 
 func (ss *SplitScreen) drawSeparator(row, cols int) {
-	tag := " CONSOLE INTERATTIVA "
+	tag := " INTERACTIVE CONSOLE "
 	totalLen := cols
 	if totalLen > 72 {
 		totalLen = 72

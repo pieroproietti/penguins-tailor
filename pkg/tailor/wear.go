@@ -73,13 +73,11 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	origin := GetWardrobeOrigin()
 	activeBranch := GetWardrobeBranch()
 
-	icon := "👗"
 	costumeLabel := fmt.Sprintf("Costume: %s", suit.Name)
 	if suit.Release != "" {
 		costumeLabel = fmt.Sprintf("Costume: %s (v%s)", suit.Name, suit.Release)
 	}
 	if isDirectAccessory {
-		icon = "👝"
 		costumeLabel = fmt.Sprintf("Accessory: %s", suit.Name)
 		if suit.Release != "" {
 			costumeLabel = fmt.Sprintf("Accessory: %s (v%s)", suit.Name, suit.Release)
@@ -96,7 +94,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	}
 
 	headerCfg := utils.SplitScreenConfig{
-		Icon:    icon,
 		Atelier: origin,
 		Costume: costumeLabel,
 		Branch:  activeBranch,
@@ -234,8 +231,8 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		summaryRows = append(summaryRows, [2]string{"Atelier", atelierVal})
 	}
 	summaryRows = append(summaryRows,
-		[2]string{"Pacchetti installati", fmt.Sprintf("%d", len(installedPackages))},
-		[2]string{"Non installati", fmt.Sprintf("%d", len(failedPackages))},
+		[2]string{"Packages installed", fmt.Sprintf("%d", len(installedPackages))},
+		[2]string{"Packages NOT installed", fmt.Sprintf("%d", len(failedPackages))},
 	)
 	if reportErr == nil {
 		summaryRows = append(summaryRows, [2]string{"Report dettagliato", reportPath})
@@ -245,7 +242,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	utils.PrintSummaryBox("✨ VESTIZIONE COMPLETATA!", summaryRows)
 
 	if suit.Reboot {
-		fmt.Printf("\n%s%s⚠ Questo costume consiglia di riavviare il sistema al termine.%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
+		fmt.Printf("\n%s%s⚠ This costume recommends restarting the system upon completion.%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
 	}
 	printKernelCleanupReminder()
 	if suit.DisplayManagerNotice {

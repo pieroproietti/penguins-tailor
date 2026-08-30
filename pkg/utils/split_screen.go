@@ -53,9 +53,6 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 	var lines []string
 
 	icon := cfg.Icon
-	if icon == "" {
-		icon = "👗"
-	}
 
 	// 1ª riga: Atelier
 	if cfg.Atelier != "" {
@@ -63,16 +60,24 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 		if cfg.Branch != "" && cfg.Branch != "main" && cfg.Branch != "master" {
 			atelierVal = fmt.Sprintf("%s (%s)", cfg.Atelier, cfg.Branch)
 		}
-		line1 := fmt.Sprintf("  %s %sAtelier:%s %s", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), atelierVal)
+		var line1 string
+		if icon != "" {
+			line1 = fmt.Sprintf("  %s %sAtelier:%s %s", icon, colorize(ColorBold+ColorWhite), colorize(ColorReset), atelierVal)
+		} else {
+			line1 = fmt.Sprintf("  %sAtelier:%s %s", colorize(ColorBold+ColorWhite), colorize(ColorReset), atelierVal)
+		}
 		lines = append(lines, line1)
 	}
 
 	// 2ª riga: Costume / Accessory
 	if cfg.Costume != "" {
 		var line2 string
-		indent := "     "
-		if cfg.Atelier == "" {
-			indent = fmt.Sprintf("  %s ", icon)
+		indent := "  "
+		if icon != "" {
+			indent = "     "
+			if cfg.Atelier == "" {
+				indent = fmt.Sprintf("  %s ", icon)
+			}
 		}
 		if strings.Contains(cfg.Costume, ":") {
 			parts := strings.SplitN(cfg.Costume, ":", 2)
@@ -91,12 +96,20 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 
 	// 3ª riga: Descrizione (senza label prefisso)
 	if cfg.Notes != "" {
-		line3 := fmt.Sprintf("     %s%s%s", colorize(ColorDim), cfg.Notes, colorize(ColorReset))
+		indent := "  "
+		if icon != "" {
+			indent = "     "
+		}
+		line3 := fmt.Sprintf("%s%s%s%s", indent, colorize(ColorDim), cfg.Notes, colorize(ColorReset))
 		lines = append(lines, line3)
 	}
 
 	if len(lines) == 0 {
-		lines = append(lines, fmt.Sprintf("  %s", icon))
+		if icon != "" {
+			lines = append(lines, fmt.Sprintf("  %s", icon))
+		} else {
+			lines = append(lines, "  Costume")
+		}
 	}
 
 	return lines

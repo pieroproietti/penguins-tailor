@@ -6,9 +6,8 @@ import (
 )
 
 func TestFormatHeaderLines(t *testing.T) {
-	// Test 1: Full config with custom branch
+	// Test 1: Config without icon (standard wear style)
 	cfg1 := SplitScreenConfig{
-		Icon:    "👗",
 		Atelier: "https://github.com/pieroproietti/penguins-wardrobe",
 		Costume: "Costume: standard (v2.0)",
 		Branch:  "develop",
@@ -21,6 +20,9 @@ func TestFormatHeaderLines(t *testing.T) {
 	if !strings.Contains(lines1[0], "Atelier:") || !strings.Contains(lines1[0], "https://github.com/pieroproietti/penguins-wardrobe (develop)") {
 		t.Errorf("line 0 unexpected: %q", lines1[0])
 	}
+	if strings.Contains(lines1[0], "👗") {
+		t.Errorf("expected no icon in line 0, got %q", lines1[0])
+	}
 	if !strings.Contains(lines1[1], "Costume:") || !strings.Contains(lines1[1], "standard (v2.0)") {
 		t.Errorf("line 1 unexpected: %q", lines1[1])
 	}
@@ -31,9 +33,8 @@ func TestFormatHeaderLines(t *testing.T) {
 		t.Errorf("expected no Note:/Nome: label in line 2, got %q", lines1[2])
 	}
 
-	// Test 2: Default branch (main/master)
+	// Test 2: Default branch without icon
 	cfg2 := SplitScreenConfig{
-		Icon:    "👗",
 		Atelier: "https://github.com/pieroproietti/penguins-wardrobe",
 		Costume: "Costume: standard",
 		Branch:  "main",
@@ -53,9 +54,8 @@ func TestFormatHeaderLines(t *testing.T) {
 		t.Errorf("expected description without Note: label, got %q", lines2[2])
 	}
 
-	// Test 3: Local mode without Atelier
+	// Test 3: Local mode without Atelier and without icon
 	cfg3 := SplitScreenConfig{
-		Icon:    "👝",
 		Costume: "Accessory: firmwares",
 		Notes:   "Hardware firmware packages",
 	}
@@ -68,5 +68,17 @@ func TestFormatHeaderLines(t *testing.T) {
 	}
 	if !strings.Contains(lines3[1], "Hardware firmware packages") || strings.Contains(lines3[1], "Note:") {
 		t.Errorf("expected description in line 1 without Note: label, got %q", lines3[1])
+	}
+
+	// Test 4: Backwards compatibility with explicit icon
+	cfg4 := SplitScreenConfig{
+		Icon:    "👗",
+		Atelier: "https://github.com/pieroproietti/penguins-wardrobe",
+		Costume: "Costume: standard",
+		Notes:   "Note di test",
+	}
+	lines4 := FormatHeaderLines(cfg4)
+	if !strings.Contains(lines4[0], "👗") {
+		t.Errorf("expected icon in line 0 when explicitly provided, got %q", lines4[0])
 	}
 }

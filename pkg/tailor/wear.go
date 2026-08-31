@@ -9,10 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pieroproietti/penguins-tailor/pkg/distro"
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
 
 func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string, dryRun bool) error {
+	d := distro.NewDistro()
+	if d.FamilyID != "debian" && d.FamilyID != "archlinux" {
+		utils.LogError("Distribution '%s' (family: %s) is not supported. Tailor currently supports Debian and Arch derivatives.", d.DistroID, d.FamilyID)
+		return fmt.Errorf("unsupported distribution family: %s", d.FamilyID)
+	}
+
 	if os.Geteuid() != 0 && !dryRun {
 		utils.LogError("'tailor wear' needs to install packages and write to system paths; run it as root (e.g. 'sudo tailor wear %s').", costumeName)
 		return fmt.Errorf("must be run as root")

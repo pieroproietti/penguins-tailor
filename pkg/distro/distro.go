@@ -70,12 +70,7 @@ func NewDistro() *Distro {
 			d.DistroLike = "Alpine"
 			return d
 
-		case "manjaro":
-			d.FamilyID = "manjaro"
-			d.DistroLike = "Manjaro"
-			return d
-
-		case "arch", "archlinux":
+		case "arch", "archlinux", "manjaro":
 			d.FamilyID = "archlinux"
 			d.DistroLike = "Arch"
 			return d

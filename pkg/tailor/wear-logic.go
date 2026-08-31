@@ -204,8 +204,13 @@ func installPackagesImpl(packages []string, retries int, noRecommends bool) []st
 		return nil
 	}
 	if _, err := exec.LookPath("apt-get"); err != nil {
-		printAiPrompt(packages)
-		return nil
+		if _, errPac := exec.LookPath("pacman"); errPac == nil {
+			logToFile("Arch Linux (pacman) detected. Package installation on Arch is under development.")
+			utils.LogNormal("Arch Linux (pacman) detected. Package installation on Arch is under development.\n")
+			return nil
+		}
+		logToFile("apt-get not found on this system.")
+		return packages
 	}
 
 	available := getAvailablePackages()
@@ -360,55 +365,7 @@ func installInteractive(packages []string) []string {
 	return missing
 }
 
-func printAiPrompt(packages []string) {
-	d := distro.NewDistro()
-	logToFile(fmt.Sprintf("System %s detected (Non-Debian). Generating prompt and AIPrompt.txt file...", d.DistroLike))
 
-	gpuCmd := "lspci -k | grep -A 2 -E 'VGA|3D'"
-	gpuInfo, _ := exec.Command("sh", "-c", gpuCmd).Output()
-	sessionCmd := "ls /usr/share/xsessions/ 2>/dev/null"
-	sessions, _ := exec.Command("sh", "-c", sessionCmd).Output()
-
-	var sb strings.Builder
-	sb.WriteString("\n--- AI ASSISTANT PROMPT ---\n")
-	sb.WriteString(fmt.Sprintf("I am using %s (base %s).\n", d.DistroID, d.DistroLike))
-	sb.WriteString(fmt.Sprintf("I need to install and configure these packages:\n%s\n\n", strings.Join(packages, " ")))
-	sb.WriteString("HARDWARE INFO (for video drivers and KMS):\n")
-	if len(gpuInfo) > 0 {
-		sb.WriteString(string(gpuInfo))
-	} else {
-		sb.WriteString("No VGA info found (pciutils not installed?).\n")
-	}
-	sb.WriteString("\nAVAILABLE DESKTOP SESSIONS:\n")
-	if len(sessions) > 0 {
-		sb.WriteString(string(sessions))
-	} else {
-		sb.WriteString("No sessions found in /usr/share/xsessions/\n")
-	}
-	sb.WriteString("\nPlease give me the exact command to install the equivalent packages on this distro and the steps needed to configure LightDM correctly.\n")
-	sb.WriteString("----------------------------------------\n")
-
-	promptContent := sb.String()
-	utils.LogNormal("\n%s%s%s", utils.ColorCyan, promptContent, utils.ColorReset)
-
-	userHome, _ := os.UserHomeDir()
-	sudoUser := os.Getenv("SUDO_USER")
-	if sudoUser != "" {
-		userHome = filepath.Join("/home", sudoUser)
-	}
-
-	promptFile := filepath.Join(userHome, "AIPrompt.txt")
-	err := os.WriteFile(promptFile, []byte(promptContent), 0644)
-	if err != nil {
-		logToFile(fmt.Sprintf("Error creating AIPrompt.txt: %v", err))
-	} else {
-		if sudoUser != "" {
-			utils.Exec(fmt.Sprintf("chown %s:%s %s", sudoUser, sudoUser, promptFile))
-		}
-		logToFile(fmt.Sprintf("✅ AIPrompt.txt file generated at: %s", promptFile))
-		utils.LogNormal("Prompt file generated in Home: %s%s%s\n", utils.ColorYellow, promptFile, utils.ColorReset)
-	}
-}
 
 // licensePromptPackages holds suit.PackagesInteractive: packages whose
 // preinst asks a license question that cannot be answered noninteractively.

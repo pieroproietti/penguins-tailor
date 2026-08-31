@@ -16,7 +16,10 @@ func (pm *aptPackageManager) Refresh() error {
 	return utils.ExecTee("apt-get update", tailorLogFile)
 }
 
-func (pm *aptPackageManager) Upgrade() error {
+func (pm *aptPackageManager) Upgrade(refresh bool) error {
+	if refresh {
+		_ = pm.Refresh()
+	}
 	return utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
 }
 

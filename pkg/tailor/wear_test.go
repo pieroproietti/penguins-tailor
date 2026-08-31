@@ -9,7 +9,7 @@ import (
 type fakePackageManager struct {
 	installCalls []InstallMode
 	refreshCalls int
-	upgradeCalls int
+	upgradeCalls []bool
 	healCalls    int
 	failed       []string
 	installed    map[string]bool
@@ -20,8 +20,8 @@ func (pm *fakePackageManager) Refresh() error {
 	return nil
 }
 
-func (pm *fakePackageManager) Upgrade() error {
-	pm.upgradeCalls++
+func (pm *fakePackageManager) Upgrade(refresh bool) error {
+	pm.upgradeCalls = append(pm.upgradeCalls, refresh)
 	return nil
 }
 
@@ -165,17 +165,49 @@ sequence:
 }
 
 func TestApplySuitUsesPackageManagerRepositoryOperations(t *testing.T) {
-	tempDir := t.TempDir()
-	suit := &Suit{
-		Sequence: &Sequence{Repositories: &Repositories{Update: true, Upgrade: true}},
+	tests := []struct {
+		name         string
+		repositories Repositories
+		refreshCalls int
+		upgradeCalls []bool
+	}{
+		{
+			name:         "update only",
+			repositories: Repositories{Update: true},
+			refreshCalls: 1,
+		},
+		{
+			name:         "upgrade only",
+			repositories: Repositories{Upgrade: true},
+			upgradeCalls: []bool{false},
+		},
+		{
+			name:         "update and upgrade",
+			repositories: Repositories{Update: true, Upgrade: true},
+			upgradeCalls: []bool{true},
+		},
 	}
-	pm := &fakePackageManager{}
 
-	if _, _, err := applySuit(tempDir, suit, false, false, pm); err != nil {
-		t.Fatalf("applySuit failed: %v", err)
-	}
-	if pm.refreshCalls != 1 || pm.upgradeCalls != 1 {
-		t.Errorf("expected one refresh and one upgrade, got refresh=%d upgrade=%d", pm.refreshCalls, pm.upgradeCalls)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			suit := &Suit{Sequence: &Sequence{Repositories: &tt.repositories}}
+			pm := &fakePackageManager{}
+
+			if _, _, err := applySuit(t.TempDir(), suit, false, false, pm); err != nil {
+				t.Fatalf("applySuit failed: %v", err)
+			}
+			if pm.refreshCalls != tt.refreshCalls {
+				t.Errorf("expected %d refresh calls, got %d", tt.refreshCalls, pm.refreshCalls)
+			}
+			if len(pm.upgradeCalls) != len(tt.upgradeCalls) {
+				t.Fatalf("expected upgrade calls %v, got %v", tt.upgradeCalls, pm.upgradeCalls)
+			}
+			for i, refresh := range tt.upgradeCalls {
+				if pm.upgradeCalls[i] != refresh {
+					t.Errorf("upgrade call %d refresh=%t, want %t", i, pm.upgradeCalls[i], refresh)
+				}
+			}
+		})
 	}
 }
 

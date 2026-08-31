@@ -40,7 +40,7 @@ func setupRepositories(repos *Repositories, suitName string, dryRun bool, pm Pac
 		}
 	}
 
-	if repos.Update {
+	if repos.Update && !repos.Upgrade {
 		logToFile(WarnPrefix(suitName) + "apt-get update...")
 		if ss := utils.GetSplitScreen(); ss != nil {
 			ss.SetAction("Updating package index (apt-get update)...")
@@ -56,7 +56,7 @@ func setupRepositories(repos *Repositories, suitName string, dryRun bool, pm Pac
 			ss.SetAction("Upgrading packages (apt-get upgrade)...")
 		}
 		if !dryRun {
-			_ = pm.Upgrade()
+			_ = pm.Upgrade(repos.Update)
 		}
 	}
 }

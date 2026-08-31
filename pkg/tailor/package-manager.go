@@ -10,7 +10,7 @@ type InstallMode struct {
 // PackageManager performs package operations required by tailor wear.
 type PackageManager interface {
 	Refresh() error
-	Upgrade() error
+	Upgrade(refresh bool) error
 	Install(packages []string, mode InstallMode) []string
 	IsInstalled(pkg string) bool
 	Heal() error

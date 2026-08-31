@@ -25,6 +25,8 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		return fmt.Errorf("must be run as root")
 	}
 
+	pm := newPackageManager()
+
 	root, err := getWardrobeRoot()
 	if err != nil {
 		utils.LogError("Wardrobe root error: %v", err)
@@ -155,7 +157,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 	SetLicensePromptPackages(suit.PackagesInteractive)
 
-	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun, false)
+	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun, false, pm)
 	if err != nil {
 		return err
 	}
@@ -188,7 +190,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					if ss != nil {
 						ss.SetAction("Accessory [%d/%d]: %s...", idx+1, len(suit.Accessories), accName)
 					}
-					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun, true)
+					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun, true, pm)
 					installedPackages = append(installedPackages, accInstalled...)
 					failedPackages = append(failedPackages, accFailed...)
 
@@ -211,7 +213,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 									if ss != nil {
 										ss.SetAction("  Nested accessory [%d/%d]: %s...", subIdx+1, len(accSuit.Accessories), subAccName)
 									}
-									subInstalled, subFailed, _ := applySuit(subAccDir, subAccSuit, dryRun, true)
+									subInstalled, subFailed, _ := applySuit(subAccDir, subAccSuit, dryRun, true, pm)
 									installedPackages = append(installedPackages, subInstalled...)
 									failedPackages = append(failedPackages, subFailed...)
 									if len(subAccSuit.FinalizeCmds) > 0 {
@@ -275,7 +277,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		if ss != nil {
 			ss.SetAction("Healing DKMS state...")
 		}
-		failedPackages = healAndRetryFailed(failedPackages)
+		failedPackages = healAndRetryFailed(failedPackages, pm)
 	}
 
 	// Costume Sysroot Overlay
@@ -451,36 +453,20 @@ func ensureKernelHeaders(dryRun bool) error {
 }
 
 // healAndRetryFailed repairs the half-configured dpkg state and retries failed packages.
-func healAndRetryFailed(failed []string) []string {
+func healAndRetryFailed(failed []string, pm PackageManager) []string {
 	if len(failed) == 0 {
 		return nil
 	}
 
 	logToFile("Healing dpkg state before retrying failed packages...")
-	_ = utils.ExecTee("dpkg --configure -a", tailorLogFile)
-	_ = utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -f -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y", tailorLogFile)
+	_ = pm.Heal()
 
-	available := getAvailablePackages()
-	var retry []string
-	for _, p := range failed {
-		if available == nil {
-			retry = append(retry, p)
-			continue
-		}
-		if _, ok := available[normalizePkgName(p)]; ok {
-			retry = append(retry, p)
-		}
-	}
-	if len(retry) == 0 {
-		return failed
-	}
-
-	logToFile(fmt.Sprintf("Retrying %d packages now that kernel headers are in place...", len(retry)))
-	installWithRetries(retry, 1)
+	logToFile(fmt.Sprintf("Retrying %d packages now that kernel headers are in place...", len(failed)))
+	pm.Install(failed, InstallMode{Retries: 1})
 
 	var still []string
 	for _, p := range failed {
-		if !isPackageInstalled(p) {
+		if !pm.IsInstalled(p) {
 			still = append(still, p)
 		}
 	}
@@ -488,7 +474,7 @@ func healAndRetryFailed(failed []string) []string {
 }
 
 // applySuit applies a costume or accessory definition with clean spinners
-func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string, []string, error) {
+func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm PackageManager) ([]string, []string, error) {
 	var installedPackages []string
 	var failedPackages []string
 	ss := utils.GetSplitScreen()
@@ -516,7 +502,7 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 				ss.SetAction("Configuring package repositories & updating cache...")
 			}
 		}
-		setupRepositories(suit.Sequence.Repositories, suit.Name, dryRun)
+		setupRepositories(suit.Sequence.Repositories, suit.Name, dryRun, pm)
 		if !isAccessory && ss != nil {
 			statusMsg := "Repositories configured & updated"
 			if dryRun {
@@ -540,7 +526,7 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages: %v", len(suit.Packages), suit.Packages))
 			installedPackages = append(installedPackages, suit.Packages...)
 		} else {
-			failed = installWithRetries(suit.Packages, 3)
+			failed = pm.Install(suit.Packages, InstallMode{Retries: 3})
 			failedPackages = append(failedPackages, failed...)
 			installed := diffStr(suit.Packages, failed)
 			installedPackages = append(installedPackages, installed...)
@@ -572,7 +558,7 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages without recommends: %v", len(suit.PackagesNoRecommends), suit.PackagesNoRecommends))
 			installedPackages = append(installedPackages, suit.PackagesNoRecommends...)
 		} else {
-			failed = installNoRecommends(suit.PackagesNoRecommends)
+			failed = pm.Install(suit.PackagesNoRecommends, InstallMode{NoRecommends: true, Retries: 3})
 			failedPackages = append(failedPackages, failed...)
 			installed := diffStr(suit.PackagesNoRecommends, failed)
 			installedPackages = append(installedPackages, installed...)
@@ -604,7 +590,7 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool) ([]string,
 			logToFile(fmt.Sprintf("[DRY-RUN] Would configure %d interactive packages: %v", len(suit.PackagesInteractive), suit.PackagesInteractive))
 			installedPackages = append(installedPackages, suit.PackagesInteractive...)
 		} else {
-			failed = installInteractive(suit.PackagesInteractive)
+			failed = pm.Install(suit.PackagesInteractive, InstallMode{Interactive: true})
 			failedPackages = append(failedPackages, failed...)
 			installed := diffStr(suit.PackagesInteractive, failed)
 			installedPackages = append(installedPackages, installed...)

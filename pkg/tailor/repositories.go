@@ -9,7 +9,7 @@ import (
 )
 
 // setupRepositories applies the "repositories" section of the nested suit format
-func setupRepositories(repos *Repositories, suitName string, dryRun bool) {
+func setupRepositories(repos *Repositories, suitName string, dryRun bool, pm PackageManager) {
 	if repos == nil {
 		return
 	}
@@ -46,7 +46,7 @@ func setupRepositories(repos *Repositories, suitName string, dryRun bool) {
 			ss.SetAction("Updating package index (apt-get update)...")
 		}
 		if !dryRun {
-			_ = utils.ExecTee("apt-get update", tailorLogFile)
+			_ = pm.Refresh()
 		}
 	}
 
@@ -56,7 +56,7 @@ func setupRepositories(repos *Repositories, suitName string, dryRun bool) {
 			ss.SetAction("Upgrading packages (apt-get upgrade)...")
 		}
 		if !dryRun {
-			_ = utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
+			_ = pm.Upgrade()
 		}
 	}
 }

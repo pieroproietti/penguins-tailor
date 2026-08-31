@@ -6,6 +6,39 @@ import (
 	"testing"
 )
 
+type fakePackageManager struct {
+	installCalls []InstallMode
+	refreshCalls int
+	upgradeCalls int
+	healCalls    int
+	failed       []string
+	installed    map[string]bool
+}
+
+func (pm *fakePackageManager) Refresh() error {
+	pm.refreshCalls++
+	return nil
+}
+
+func (pm *fakePackageManager) Upgrade() error {
+	pm.upgradeCalls++
+	return nil
+}
+
+func (pm *fakePackageManager) Install(_ []string, mode InstallMode) []string {
+	pm.installCalls = append(pm.installCalls, mode)
+	return pm.failed
+}
+
+func (pm *fakePackageManager) IsInstalled(pkg string) bool {
+	return pm.installed[pkg]
+}
+
+func (pm *fakePackageManager) Heal() error {
+	pm.healCalls++
+	return nil
+}
+
 func TestApplySuit_DryRun(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -35,7 +68,8 @@ sequence:
 		t.Fatalf("loadSuit failed: %v", err)
 	}
 
-	installed, failed, err := applySuit(tempDir, suit, true, false)
+	pm := &fakePackageManager{}
+	installed, failed, err := applySuit(tempDir, suit, true, false, pm)
 	if err != nil {
 		t.Fatalf("applySuit in dry-run mode failed: %v", err)
 	}
@@ -48,6 +82,9 @@ sequence:
 	expectedTotal := len(suit.Packages) + len(suit.PackagesNoRecommends) + len(suit.PackagesInteractive)
 	if len(installed) != expectedTotal {
 		t.Errorf("expected %d installed packages in dry-run, got %d: %v", expectedTotal, len(installed), installed)
+	}
+	if len(pm.installCalls) != 0 || pm.refreshCalls != 0 {
+		t.Error("expected dry-run not to invoke the package manager")
 	}
 }
 
@@ -74,7 +111,7 @@ packages:
 		t.Fatalf("loadSuit failed: %v", err)
 	}
 
-	installed, failed, err := applySuit(tempDir, suit, true, true)
+	installed, failed, err := applySuit(tempDir, suit, true, true, &fakePackageManager{})
 	if err != nil {
 		t.Fatalf("applySuit in accessory dry-run mode failed: %v", err)
 	}
@@ -84,6 +121,76 @@ packages:
 	}
 	if len(installed) != 6 {
 		t.Errorf("expected 6 installed packages for accessory, got %d: %v", len(installed), installed)
+	}
+}
+
+func TestApplySuitUsesPackageManagerModes(t *testing.T) {
+	tempDir := t.TempDir()
+	costumeYaml := `name: package-modes
+packages:
+  - pkg-normal
+sequence:
+  packages_no_install_recommends:
+    - pkg-no-recommends
+  packages_interactive:
+    - pkg-interactive
+`
+	yamlPath := filepath.Join(tempDir, "index.yaml")
+	if err := os.WriteFile(yamlPath, []byte(costumeYaml), 0644); err != nil {
+		t.Fatalf("failed to write fixture yaml: %v", err)
+	}
+
+	suit, err := loadSuit(yamlPath)
+	if err != nil {
+		t.Fatalf("loadSuit failed: %v", err)
+	}
+
+	pm := &fakePackageManager{}
+	if _, _, err := applySuit(tempDir, suit, false, false, pm); err != nil {
+		t.Fatalf("applySuit failed: %v", err)
+	}
+
+	if len(pm.installCalls) != 3 {
+		t.Fatalf("expected 3 package manager install calls, got %d", len(pm.installCalls))
+	}
+	if pm.installCalls[0] != (InstallMode{Retries: 3}) {
+		t.Errorf("unexpected normal install mode: %+v", pm.installCalls[0])
+	}
+	if pm.installCalls[1] != (InstallMode{NoRecommends: true, Retries: 3}) {
+		t.Errorf("unexpected no-recommends install mode: %+v", pm.installCalls[1])
+	}
+	if pm.installCalls[2] != (InstallMode{Interactive: true}) {
+		t.Errorf("unexpected interactive install mode: %+v", pm.installCalls[2])
+	}
+}
+
+func TestApplySuitUsesPackageManagerRepositoryOperations(t *testing.T) {
+	tempDir := t.TempDir()
+	suit := &Suit{
+		Sequence: &Sequence{Repositories: &Repositories{Update: true, Upgrade: true}},
+	}
+	pm := &fakePackageManager{}
+
+	if _, _, err := applySuit(tempDir, suit, false, false, pm); err != nil {
+		t.Fatalf("applySuit failed: %v", err)
+	}
+	if pm.refreshCalls != 1 || pm.upgradeCalls != 1 {
+		t.Errorf("expected one refresh and one upgrade, got refresh=%d upgrade=%d", pm.refreshCalls, pm.upgradeCalls)
+	}
+}
+
+func TestHealAndRetryFailedUsesPackageManager(t *testing.T) {
+	pm := &fakePackageManager{installed: map[string]bool{"failed-package": true}}
+	remaining := healAndRetryFailed([]string{"failed-package"}, pm)
+
+	if pm.healCalls != 1 {
+		t.Errorf("expected one heal call, got %d", pm.healCalls)
+	}
+	if len(pm.installCalls) != 1 || pm.installCalls[0] != (InstallMode{Retries: 1}) {
+		t.Errorf("unexpected retry install calls: %+v", pm.installCalls)
+	}
+	if len(remaining) != 0 {
+		t.Errorf("expected no remaining failed packages, got %v", remaining)
 	}
 }
 

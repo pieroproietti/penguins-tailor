@@ -1,0 +1,56 @@
+// Copyright 2026 Piero Proietti <piero.proietti@gmail.com>.
+// All rights reserved.
+
+package repo
+
+import (
+	"fmt"
+
+	"github.com/pieroproietti/penguins-tailor/pkg/distro"
+)
+
+// HandleRepos gestisce l'aggiunta o la rimozione dei repository penguins-eggs
+func HandleRepos(action string) error {
+	// Chiamiamo la variabile 'd' per non sovrascrivere il nome del package 'distro'
+	d := distro.NewDistro()
+	var err error
+
+	switch action {
+	case "add":
+		switch d.FamilyID {
+		case "debian", "ubuntu":
+			err = addDebian()
+		case "alpine":
+			err = addAlpine()
+		case "archlinux", "arch", "manjaro":
+			err = addArch(d.DistroID == "manjaro")
+		case "fedora", "rhel", "almalinux":
+			err = addFedoraEl(d.DistroID != "Fedora" && d.DistroID != "fedora")
+		case "opensuse", "suse":
+			err = addSuse()
+		default:
+			err = fmt.Errorf("unsupported distro family for adding repo: %s", d.FamilyID)
+		}
+
+	case "remove", "rm":
+		switch d.FamilyID {
+		case "debian", "ubuntu":
+			err = removeDebian()
+		case "alpine":
+			err = removeAlpine()
+		case "archlinux", "arch", "manjaro":
+			err = removeArch(d.DistroID == "manjaro")
+		case "fedora", "rhel", "almalinux":
+			err = removeRpm(false) // isSuse = false
+		case "opensuse", "suse":
+			err = removeRpm(true) // isSuse = true
+		default:
+			err = fmt.Errorf("unsupported distro family for removing repo: %s", d.FamilyID)
+		}
+
+	default:
+		err = fmt.Errorf("unknown action: %s. Use 'add' or 'remove'", action)
+	}
+
+	return err
+}

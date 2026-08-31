@@ -14,6 +14,7 @@
 - **Wear**: Seamlessly apply a costume to the system (`sudo tailor wear <costume>`), configuring repositories, packages, sysroot configurations, and user skel settings.
 - **Export**: Transfer native packages (`tailor export pkg`) or execution logs and reports (`tailor export log`) to remote storage via SSH.
 - **Build**: Integrated packaging tool to compile binaries and produce native distribution packages (`tailor tools build`).
+- **Repo**: Configure or remove official `penguins-eggs.net` repositories (`sudo tailor tools repo [add|rm]`).
 - **Distro-Aware**: Automatically identifies target distributions (Debian, Ubuntu, Arch, Alpine, Fedora, openSUSE, etc.) and generates assistance prompts if non-Debian package managers are present.
 
 > NOTE: At present, Tailor is only tested on the Debian family of distributions (Debian, Devuan, Ubuntu, and their derivatives). We have plans to expand support to Arch Linux and possibly other distributions in the future. The major hurdle is the inconsistency in package naming conventions, which we might eventually address through AI.
@@ -125,14 +126,22 @@ tailor export log -u artisan -i 192.168.1.50 -d /home/artisan/logs
   tailor tools build
   ```
 
+- **`tailor tools repo [add|rm]`**
+  Configures or removes the official `penguins-eggs.net` repositories and GPG keys for the host system's package manager (APT, Pacman, DNF, Zypper, APK). Requires root privileges (`sudo`).
+  ```bash
+  # Add official repository and GPG keys
+  sudo tailor tools repo add
+
+  # Remove repository configuration and keys
+  sudo tailor tools repo rm
+  ```
+
 ---
 
 ## 🙏 Acknowledgements
 
-# 🙏 Acknowledgements
+Special thanks to **[Charlie Martínez](https://github.com/charliemartinez)** [Quirinux](https://quirinux.org) for his invaluable support, extensive testing, ideas, and close collaboration during the development and experimentation of `penguins-tailor`.
 
- Special thanks to **[Charlie Martínez](https://github.com/charliemartinez)** [Quirinux](https://quirinux.org) for his invaluable support, extensive testing, ideas, and close collaboration during the development
-  and experimentation of `penguins-tailor`
 ---
 
 ## 📜 License

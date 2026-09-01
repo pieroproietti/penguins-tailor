@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pieroproietti/penguins-tailor/pkg/distro"
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
@@ -303,9 +302,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
 		}
 	}
-
-	// Prompt user to review terminal output before closing split screen and showing summary
-	waitKeyPress("Press Enter to continue to summary report...")
 
 	// Close split screen before printing final summary box
 	if ss != nil {
@@ -794,9 +790,8 @@ func waitKeyPress(message string) {
 }
 
 func rebootSystem() {
-	fmt.Printf("\n%s%s🔄 Costume requires a reboot. Restarting system in 3 seconds...%s\n", utils.ColorYellow, utils.ColorBold, utils.ColorReset)
 	logToFile("Costume requires a reboot. Initiating system restart...")
-	time.Sleep(3 * time.Second)
+	waitKeyPress("Press Enter to reset...")
 	if err := exec.Command("systemctl", "reboot").Run(); err != nil {
 		if err2 := exec.Command("reboot").Run(); err2 != nil {
 			_ = exec.Command("shutdown", "-r", "now").Run()

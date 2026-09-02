@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFormatHeaderLines(t *testing.T) {
@@ -125,3 +127,91 @@ func TestDrawHeader_NoTopDivider(t *testing.T) {
 	}
 }
 
+func TestDashboardLayoutHasNoPersistentInteractiveConsole(t *testing.T) {
+	ss := &SplitScreen{
+		totalRows:   24,
+		totalCols:   80,
+		headerLines: []string{"  Costume: standard"},
+		headerRows:  2,
+		maxSteps:    2,
+		topHeight:   6,
+		completed:   []string{"[OK] Repositories configured"},
+		installed:   4,
+		unavailable: 1,
+		failed:      2,
+	}
+
+	output := captureSplitScreenOutput(t, ss.drawFullLayout)
+	if strings.Contains(output, "INTERACTIVE CONSOLE") {
+		t.Errorf("dashboard unexpectedly contains interactive console: %q", output)
+	}
+	if !strings.Contains(output, "Packages: 4 installed · 1 unavailable · 2 failed") {
+		t.Errorf("dashboard missing package summary: %q", output)
+	}
+	if !strings.Contains(output, "Repositories configured") {
+		t.Errorf("dashboard missing completed step: %q", output)
+	}
+}
+
+func TestExecInteractiveRestoresDashboardState(t *testing.T) {
+	ss := &SplitScreen{
+		active:        true,
+		totalRows:     24,
+		totalCols:     80,
+		headerLines:   []string{"  Costume: standard"},
+		headerRows:    2,
+		maxSteps:      2,
+		topHeight:     6,
+		completed:     []string{"[OK] Prior step"},
+		currentAction: "Installing packages",
+		installed:     4,
+		unavailable:   1,
+		failed:        2,
+		startTime:     time.Now(),
+		stopChan:      make(chan struct{}),
+	}
+
+	logPath := filepath.Join(t.TempDir(), "interactive.log")
+	output := captureSplitScreenOutput(t, func() {
+		if err := ss.ExecInteractive("printf 'interactive output\\n'", logPath); err != nil {
+			t.Fatalf("ExecInteractive() error = %v", err)
+		}
+	})
+
+	if strings.Count(output, "INTERACTIVE CONSOLE") != 1 {
+		t.Errorf("interactive heading count = %d, output = %q", strings.Count(output, "INTERACTIVE CONSOLE"), output)
+	}
+	for _, want := range []string{
+		"interactive output",
+		"Packages: 4 installed · 1 unavailable · 2 failed",
+		"Prior step",
+		"Installing packages",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("restored dashboard missing %q in %q", want, output)
+		}
+	}
+	if ss.interactive {
+		t.Error("interactive state remained enabled after command completion")
+	}
+}
+
+func captureSplitScreenOutput(t *testing.T, fn func()) string {
+	t.Helper()
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	fn()
+	_ = w.Close()
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	return buf.String()
+}

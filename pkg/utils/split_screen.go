@@ -124,10 +124,12 @@ type SplitScreen struct {
 	headerRows    int
 	maxSteps      int
 	topHeight     int // row number of current action / spinner line
-	sepRow        int // row number of separator line
-	scrollStart   int // first row of bottom scrolling region
 	completed     []string
 	currentAction string
+	installed     int
+	unavailable   int
+	failed        int
+	interactive   bool
 	startTime     time.Time
 	stopChan      chan struct{}
 }
@@ -142,7 +144,7 @@ func GetSplitScreen() *SplitScreen {
 	return globalSplitScreen
 }
 
-// StartSplitScreenConfig initializes the native DECSTBM split screen with structured config
+// StartSplitScreenConfig initializes the structured status dashboard.
 func StartSplitScreenConfig(cfg SplitScreenConfig) *SplitScreen {
 	splitMu.Lock()
 	defer splitMu.Unlock()
@@ -170,20 +172,15 @@ func StartSplitScreenConfig(cfg SplitScreenConfig) *SplitScreen {
 		maxSteps = 7
 	}
 
-	topHeight := headerRows + maxSteps + 1
-	sepRow := topHeight + 1
-	scrollStart := sepRow + 1
-
-	// Ensure there are at least 4 lines for bottom interactive console
-	if scrollStart >= rows-3 {
-		maxSteps = rows - headerRows - 5
+	// Reserve only the dashboard rows. Interactive commands take over the full
+	// terminal temporarily instead of claiming a permanent lower pane.
+	if maxAvailable := rows - headerRows - 3; maxSteps > maxAvailable {
+		maxSteps = maxAvailable
 		if maxSteps < 3 {
 			maxSteps = 3
 		}
-		topHeight = headerRows + maxSteps + 1
-		sepRow = topHeight + 1
-		scrollStart = sepRow + 1
 	}
+	topHeight := headerRows + maxSteps + 2
 
 	ss := &SplitScreen{
 		active:        true,
@@ -193,8 +190,6 @@ func StartSplitScreenConfig(cfg SplitScreenConfig) *SplitScreen {
 		headerRows:    headerRows,
 		maxSteps:      maxSteps,
 		topHeight:     topHeight,
-		sepRow:        sepRow,
-		scrollStart:   scrollStart,
 		completed:     make([]string, 0),
 		currentAction: "",
 		startTime:     time.Now(),
@@ -235,24 +230,17 @@ func (ss *SplitScreen) drawHeader() {
 
 func (ss *SplitScreen) drawFullLayout() {
 	// Clear entire terminal and move to (1,1)
-	fmt.Print("\033[2J\033[1;1H")
+	fmt.Print("\033[r\033[2J\033[1;1H")
 
-	// Draw top header
+	// Draw the persistent status dashboard. There is deliberately no scrolling
+	// region or interactive-console pane while no command needs user input.
 	ss.drawHeader()
-
-	// Draw separator line at sepRow
-	ss.drawSeparator(ss.sepRow, ss.totalCols)
-
-	// Set DECSTBM scrolling region for the bottom area
-	fmt.Printf("\033[%d;%dr", ss.scrollStart, ss.totalRows)
-
-	// Position cursor in the bottom scrolling region
-	fmt.Printf("\033[%d;1H", ss.scrollStart)
+	ss.redrawStatusLocked()
 }
 
-func (ss *SplitScreen) drawSeparator(row, cols int) {
+func (ss *SplitScreen) drawInteractiveHeader() {
 	tag := " INTERACTIVE CONSOLE "
-	totalLen := cols
+	totalLen := ss.totalCols
 	if totalLen > 72 {
 		totalLen = 72
 	}
@@ -272,8 +260,7 @@ func (ss *SplitScreen) drawSeparator(row, cols int) {
 		colorize(ColorReset),
 	)
 
-	// Save cursor, draw separator at row, restore cursor
-	fmt.Printf("\0337\033[%d;1H\033[2K%s\0338", row, sepLine)
+	fmt.Printf("%s\n", sepLine)
 }
 
 func (ss *SplitScreen) spinnerLoop() {
@@ -291,6 +278,10 @@ func (ss *SplitScreen) spinnerLoop() {
 				ss.mu.Unlock()
 				return
 			}
+			if ss.interactive {
+				ss.mu.Unlock()
+				continue
+			}
 			action := ss.currentAction
 			if action == "" {
 				ss.mu.Unlock()
@@ -300,22 +291,8 @@ func (ss *SplitScreen) spinnerLoop() {
 			frame := asciiSpinnerFrames[idx%len(asciiSpinnerFrames)]
 			idx++
 			elapsed := time.Since(ss.startTime)
-			row := ss.topHeight
+			ss.drawActionLocked(action, frame, elapsed)
 			ss.mu.Unlock()
-
-			mins := int(elapsed.Minutes())
-			secs := int(elapsed.Seconds()) % 60
-			timeStr := fmt.Sprintf("[%02d:%02d]", mins, secs)
-
-			line := fmt.Sprintf("  %s[%s%s%s]%s %s %s%s%s",
-				colorize(ColorCyan),
-				colorize(ColorBold+ColorWhite), frame, colorize(ColorReset+ColorCyan),
-				colorize(ColorReset),
-				action,
-				colorize(ColorDim), timeStr, colorize(ColorReset))
-
-			// DEC Save cursor, move to spinner row, clear line, write text, DEC Restore cursor
-			fmt.Printf("\0337\033[%d;1H\033[2K%s\0338", row, line)
 		}
 	}
 }
@@ -354,8 +331,41 @@ func (ss *SplitScreen) SetAction(format string, a ...interface{}) {
 	ss.currentAction = fmt.Sprintf(format, a...)
 }
 
+// SetPackageSummary updates the global package outcome counters shown by the
+// dashboard. Rendering stays inside SplitScreen so callers provide data only.
+func (ss *SplitScreen) SetPackageSummary(installed, unavailable, failed int) {
+	if ss == nil {
+		return
+	}
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	ss.installed = installed
+	ss.unavailable = unavailable
+	ss.failed = failed
+	ss.redrawStatusLocked()
+}
+
+// AddPackageStep records a concise package outcome for a costume or accessory.
+func (ss *SplitScreen) AddPackageStep(subject string, installed, unavailable, failed int) {
+	if ss == nil {
+		return
+	}
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	color := ColorCyan
+	if failed > 0 {
+		color = ColorYellow
+	}
+	ss.completed = append(ss.completed, fmt.Sprintf("%s--> %s — %s%s", colorize(color), subject, packageSummaryText(installed, unavailable, failed), colorize(ColorReset)))
+	ss.currentAction = ""
+	ss.redrawStatusLocked()
+}
+
 func (ss *SplitScreen) redrawStatusLocked() {
-	startRow := ss.headerRows + 1
+	summaryRow := ss.headerRows + 1
+	startRow := summaryRow + 1
 	maxVisible := ss.maxSteps
 
 	// Determine which completed steps to display
@@ -369,6 +379,7 @@ func (ss *SplitScreen) redrawStatusLocked() {
 	// Buffer all redraw operations
 	var sb strings.Builder
 	sb.WriteString("\0337") // save cursor
+	sb.WriteString(fmt.Sprintf("\033[%d;1H\033[2K  Packages: %s", summaryRow, packageSummaryText(ss.installed, ss.unavailable, ss.failed)))
 
 	for i := 0; i < maxVisible; i++ {
 		row := startRow + i
@@ -378,21 +389,46 @@ func (ss *SplitScreen) redrawStatusLocked() {
 		}
 	}
 
-	// Clear current action row
+	// Clear and restore the current action row so a dashboard redraw after an
+	// interactive command immediately restores all visible state.
 	sb.WriteString(fmt.Sprintf("\033[%d;1H\033[2K", ss.topHeight))
+	if ss.currentAction != "" {
+		sb.WriteString(ss.actionLine(ss.currentAction, asciiSpinnerFrames[0], time.Since(ss.startTime)))
+	}
 	sb.WriteString("\0338") // restore cursor
 
 	fmt.Print(sb.String())
 }
 
-// ExecInteractive temporarily suspends the split screen margins for a full-screen
-// interactive command, then restores the split screen layout upon completion.
+func (ss *SplitScreen) drawActionLocked(action, frame string, elapsed time.Duration) {
+	fmt.Printf("\0337\033[%d;1H\033[2K%s\0338", ss.topHeight, ss.actionLine(action, frame, elapsed))
+}
+
+func (ss *SplitScreen) actionLine(action, frame string, elapsed time.Duration) string {
+	mins := int(elapsed.Minutes())
+	secs := int(elapsed.Seconds()) % 60
+	return fmt.Sprintf("  %s[%s%s%s]%s %s %s[%02d:%02d]%s",
+		colorize(ColorCyan),
+		colorize(ColorBold+ColorWhite), frame, colorize(ColorReset+ColorCyan),
+		colorize(ColorReset),
+		action,
+		colorize(ColorDim), mins, secs, colorize(ColorReset))
+}
+
+func packageSummaryText(installed, unavailable, failed int) string {
+	return fmt.Sprintf("%d installed · %d unavailable · %d failed", installed, unavailable, failed)
+}
+
+// ExecInteractive gives a command full-terminal control, then restores the
+// status dashboard upon completion.
 func (ss *SplitScreen) ExecInteractive(command string, logFilePath string) error {
 	ensureRootPath()
 
 	ss.mu.Lock()
-	// Reset scroll region to full screen
+	ss.interactive = true
+	// Reset the dashboard and give the command direct control of the terminal.
 	fmt.Print("\033[r\033[2J\033[1;1H")
+	ss.drawInteractiveHeader()
 	ss.mu.Unlock()
 
 	var f *os.File
@@ -420,8 +456,8 @@ func (ss *SplitScreen) ExecInteractive(command string, logFilePath string) error
 
 	ss.mu.Lock()
 	if ss.active {
+		ss.interactive = false
 		ss.drawFullLayout()
-		ss.redrawStatusLocked()
 	}
 	ss.mu.Unlock()
 

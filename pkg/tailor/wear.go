@@ -199,11 +199,8 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	}
 
 	if ss != nil {
-		color := utils.ColorCyan
-		if len(failedPackages) > 0 {
-			color = utils.ColorYellow
-		}
-		ss.AddStep(fmt.Sprintf("%s--> %s: %s%s%s%s", color, costumeTag, displayName, costumeDetails, costumePreseedSuffix, utils.ColorReset))
+		ss.SetPackageSummary(len(installedPackages), len(unavailablePackages), len(failedPackages))
+		ss.AddPackageStep(fmt.Sprintf("%s: %s%s", costumeTag, displayName, costumePreseedSuffix), len(packageResult.Installed), len(packageResult.Unavailable), len(packageResult.Failed))
 	} else {
 		utils.PrintSubSection("-->", fmt.Sprintf("%s: %s%s%s", costumeTag, displayName, costumeDetails, costumePreseedSuffix))
 	}
@@ -240,6 +237,9 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					installedPackages = append(installedPackages, accResult.Installed...)
 					unavailablePackages = append(unavailablePackages, accResult.Unavailable...)
 					failedPackages = append(failedPackages, accResult.Failed...)
+					if ss != nil {
+						ss.SetPackageSummary(len(installedPackages), len(unavailablePackages), len(failedPackages))
+					}
 
 					// If the accessory defines nested accessories, apply them recursively
 					if len(accSuit.Accessories) > 0 {
@@ -264,6 +264,10 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 									installedPackages = append(installedPackages, subResult.Installed...)
 									unavailablePackages = append(unavailablePackages, subResult.Unavailable...)
 									failedPackages = append(failedPackages, subResult.Failed...)
+									if ss != nil {
+										ss.SetPackageSummary(len(installedPackages), len(unavailablePackages), len(failedPackages))
+										ss.AddPackageStep(fmt.Sprintf("Nested accessory [%d/%d]: %s", subIdx+1, len(accSuit.Accessories), subAccName), len(subResult.Installed), len(subResult.Unavailable), len(subResult.Failed))
+									}
 									if len(subAccSuit.FinalizeCmds) > 0 {
 										executeFinalizeCommands(subAccSuit.FinalizeCmds, subAccDir, subAccSuit.Name, dryRun)
 									}
@@ -295,11 +299,8 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					}
 
 					if ss != nil {
-						color := utils.ColorCyan
-						if len(accResult.Failed) > 0 {
-							color = utils.ColorYellow
-						}
-						ss.AddStep(fmt.Sprintf("%s--> [%d/%d] Accessory: %s%s%s%s", color, idx+1, len(suit.Accessories), accName, accDetails, accPreseedSuffix, utils.ColorReset))
+						ss.SetPackageSummary(len(installedPackages), len(unavailablePackages), len(failedPackages))
+						ss.AddPackageStep(fmt.Sprintf("Accessory [%d/%d]: %s%s", idx+1, len(suit.Accessories), accName, accPreseedSuffix), len(accResult.Installed), len(accResult.Unavailable), len(accResult.Failed))
 					} else {
 						utils.PrintSubSection("-->", fmt.Sprintf("[%d/%d] Accessory: %s%s%s", idx+1, len(suit.Accessories), accName, accDetails, accPreseedSuffix))
 					}
@@ -326,6 +327,9 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 			ss.SetAction("Healing DKMS state...")
 		}
 		failedPackages = healAndRetryFailed(failedPackages, pm)
+		if ss != nil {
+			ss.SetPackageSummary(len(installedPackages), len(unavailablePackages), len(failedPackages))
+		}
 	}
 
 	// Costume Sysroot Overlay

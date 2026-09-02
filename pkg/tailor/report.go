@@ -16,6 +16,7 @@ import (
 type wearReport struct {
 	CostumeName   string
 	Installed     []string
+	Unavailable   []string
 	FailedInstall []string
 }
 
@@ -59,6 +60,7 @@ func writeWearReport(r wearReport) (string, error) {
 	}
 
 	section("Installed", r.Installed)
+	section("Unavailable", r.Unavailable)
 	section("Could NOT be installed", r.FailedInstall)
 
 	if err := w.Flush(); err != nil {

@@ -3,6 +3,7 @@ package tailor
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ type fakePackageManager struct {
 	refreshCalls int
 	upgradeCalls []bool
 	healCalls    int
-	failed       []string
+	result       PackageInstallResult
 	installed    map[string]bool
 }
 
@@ -25,9 +26,9 @@ func (pm *fakePackageManager) Upgrade(refresh bool) error {
 	return nil
 }
 
-func (pm *fakePackageManager) Install(_ []string, mode InstallMode) []string {
+func (pm *fakePackageManager) Install(_ []string, mode InstallMode) PackageInstallResult {
 	pm.installCalls = append(pm.installCalls, mode)
-	return pm.failed
+	return pm.result
 }
 
 func (pm *fakePackageManager) IsInstalled(pkg string) bool {
@@ -69,19 +70,19 @@ sequence:
 	}
 
 	pm := &fakePackageManager{}
-	installed, failed, err := applySuit(tempDir, suit, true, false, pm)
+	result, err := applySuit(tempDir, suit, true, false, pm)
 	if err != nil {
 		t.Fatalf("applySuit in dry-run mode failed: %v", err)
 	}
 
-	if len(failed) != 0 {
-		t.Errorf("expected 0 failed packages in dry-run, got %d: %v", len(failed), failed)
+	if len(result.Failed) != 0 {
+		t.Errorf("expected 0 failed packages in dry-run, got %d: %v", len(result.Failed), result.Failed)
 	}
 
 	// In dry-run, all packages (packages + packages_no_recommends + packages_interactive) are simulated as installed
 	expectedTotal := len(suit.Packages) + len(suit.PackagesNoRecommends) + len(suit.PackagesInteractive)
-	if len(installed) != expectedTotal {
-		t.Errorf("expected %d installed packages in dry-run, got %d: %v", expectedTotal, len(installed), installed)
+	if len(result.Installed) != expectedTotal {
+		t.Errorf("expected %d installed packages in dry-run, got %d: %v", expectedTotal, len(result.Installed), result.Installed)
 	}
 	if len(pm.installCalls) != 0 || pm.refreshCalls != 0 {
 		t.Error("expected dry-run not to invoke the package manager")
@@ -111,16 +112,16 @@ packages:
 		t.Fatalf("loadSuit failed: %v", err)
 	}
 
-	installed, failed, err := applySuit(tempDir, suit, true, true, &fakePackageManager{})
+	result, err := applySuit(tempDir, suit, true, true, &fakePackageManager{})
 	if err != nil {
 		t.Fatalf("applySuit in accessory dry-run mode failed: %v", err)
 	}
 
-	if len(failed) != 0 {
-		t.Errorf("expected 0 failed packages, got %d: %v", len(failed), failed)
+	if len(result.Failed) != 0 {
+		t.Errorf("expected 0 failed packages, got %d: %v", len(result.Failed), result.Failed)
 	}
-	if len(installed) != 6 {
-		t.Errorf("expected 6 installed packages for accessory, got %d: %v", len(installed), installed)
+	if len(result.Installed) != 6 {
+		t.Errorf("expected 6 installed packages for accessory, got %d: %v", len(result.Installed), result.Installed)
 	}
 }
 
@@ -146,7 +147,7 @@ sequence:
 	}
 
 	pm := &fakePackageManager{}
-	if _, _, err := applySuit(tempDir, suit, false, false, pm); err != nil {
+	if _, err := applySuit(tempDir, suit, false, false, pm); err != nil {
 		t.Fatalf("applySuit failed: %v", err)
 	}
 
@@ -161,6 +162,29 @@ sequence:
 	}
 	if pm.installCalls[2] != (InstallMode{Interactive: true}) {
 		t.Errorf("unexpected interactive install mode: %+v", pm.installCalls[2])
+	}
+}
+
+func TestApplySuitPreservesPackageInstallOutcomes(t *testing.T) {
+	suit := &Suit{Packages: []string{"installed-package", "missing-package", "failed-package"}}
+	pm := &fakePackageManager{result: PackageInstallResult{
+		Installed:   []string{"installed-package"},
+		Unavailable: []string{"missing-package"},
+		Failed:      []string{"failed-package"},
+	}}
+
+	result, err := applySuit(t.TempDir(), suit, false, false, pm)
+	if err != nil {
+		t.Fatalf("applySuit() error = %v", err)
+	}
+	if got, want := result.Installed, []string{"installed-package"}; !slices.Equal(got, want) {
+		t.Errorf("Installed = %v, want %v", got, want)
+	}
+	if got, want := result.Unavailable, []string{"missing-package"}; !slices.Equal(got, want) {
+		t.Errorf("Unavailable = %v, want %v", got, want)
+	}
+	if got, want := result.Failed, []string{"failed-package"}; !slices.Equal(got, want) {
+		t.Errorf("Failed = %v, want %v", got, want)
 	}
 }
 
@@ -193,7 +217,7 @@ func TestApplySuitUsesPackageManagerRepositoryOperations(t *testing.T) {
 			suit := &Suit{Sequence: &Sequence{Repositories: &tt.repositories}}
 			pm := &fakePackageManager{}
 
-			if _, _, err := applySuit(t.TempDir(), suit, false, false, pm); err != nil {
+			if _, err := applySuit(t.TempDir(), suit, false, false, pm); err != nil {
 				t.Fatalf("applySuit failed: %v", err)
 			}
 			if pm.refreshCalls != tt.refreshCalls {

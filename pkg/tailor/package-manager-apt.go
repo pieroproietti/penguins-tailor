@@ -23,7 +23,7 @@ func (pm *aptPackageManager) Upgrade(refresh bool) error {
 	return utils.ExecLogOnly("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
 }
 
-func (pm *aptPackageManager) Install(packages []string, mode InstallMode) []string {
+func (pm *aptPackageManager) Install(packages []string, mode InstallMode) PackageInstallResult {
 	if mode.Interactive {
 		return pm.installInteractive(packages)
 	}
@@ -45,18 +45,18 @@ func (pm *aptPackageManager) Heal() error {
 	return nil
 }
 
-func (pm *aptPackageManager) install(packages []string, retries int, noRecommends bool) []string {
+func (pm *aptPackageManager) install(packages []string, retries int, noRecommends bool) PackageInstallResult {
 	if len(packages) == 0 {
-		return nil
+		return PackageInstallResult{}
 	}
 	if _, err := exec.LookPath("apt-get"); err != nil {
 		if _, errPac := exec.LookPath("pacman"); errPac == nil {
 			logToFile("Arch Linux (pacman) detected. Package installation on Arch is under development.")
 			utils.LogNormal("Arch Linux (pacman) detected. Package installation on Arch is under development.\n")
-			return nil
+			return PackageInstallResult{}
 		}
 		logToFile("apt-get not found on this system.")
-		return packages
+		return PackageInstallResult{}
 	}
 
 	available := pm.availablePackages()
@@ -80,7 +80,7 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 	}
 	if len(toInstall) == 0 {
 		logToFile("No valid packages to install.")
-		return missing
+		return PackageInstallResult{Unavailable: missing}
 	}
 
 	flags := "-y"
@@ -95,7 +95,7 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 		}
 	}
 	if len(clean) == 0 {
-		return missing
+		return PackageInstallResult{Unavailable: missing}
 	}
 
 	debconfFrontend := "readline"
@@ -107,8 +107,13 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 	cmd := fmt.Sprintf("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=%s apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' %s %s", debconfFrontend, flags, pkgString)
 	logToFile(fmt.Sprintf("Installing %d packages: %s", len(clean), pkgString))
 	if err := utils.ExecLogOnly(cmd, tailorLogFile); err == nil {
-		logToFile("✅ Packages installed.")
-		return missing
+		installed, failed := pm.partitionInstalled(clean)
+		if len(failed) == 0 {
+			logToFile("✅ Packages installed.")
+		} else {
+			logToFile(fmt.Sprintf("⚠️  %d packages were attempted but are not installed: %v", len(failed), failed))
+		}
+		return PackageInstallResult{Installed: installed, Unavailable: missing, Failed: failed}
 	}
 
 	pm.healInstallationState()
@@ -125,9 +130,10 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 			if err := utils.ExecLogOnly(singleCmd, tailorLogFile); err != nil {
 				if pm.IsInstalled(pkg) {
 					logToFile(fmt.Sprintf("ℹ️  apt-get reported an error installing %s, but dpkg confirms it is installed correctly.", pkg))
-				} else {
-					stillFailing = append(stillFailing, pkg)
 				}
+			}
+			if !pm.IsInstalled(pkg) {
+				stillFailing = append(stillFailing, pkg)
 			}
 		}
 		pending = stillFailing
@@ -141,12 +147,13 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 	} else {
 		logToFile("✅ All packages installed successfully (one by one).")
 	}
-	return append(missing, pending...)
+	installed, failed := pm.partitionInstalled(clean)
+	return PackageInstallResult{Installed: installed, Unavailable: missing, Failed: failed}
 }
 
-func (pm *aptPackageManager) installInteractive(packages []string) []string {
+func (pm *aptPackageManager) installInteractive(packages []string) PackageInstallResult {
 	if len(packages) == 0 {
-		return nil
+		return PackageInstallResult{}
 	}
 
 	available := pm.availablePackages()
@@ -169,7 +176,7 @@ func (pm *aptPackageManager) installInteractive(packages []string) []string {
 		logToFile(fmt.Sprintf("WARNING: %d interactive packages skipped (not found): %v", len(missing), missing))
 	}
 	if len(toInstall) == 0 {
-		return missing
+		return PackageInstallResult{Unavailable: missing}
 	}
 
 	debconfFrontend := "readline"
@@ -181,18 +188,24 @@ func (pm *aptPackageManager) installInteractive(packages []string) []string {
 	cmd := fmt.Sprintf("DEBIAN_FRONTEND=%s apt-get install -o Dpkg::Options::='--force-confold' -y %s", debconfFrontend, pkgString)
 	logToFile(fmt.Sprintf("Installing interactive packages: %s", pkgString))
 	if err := utils.ExecInteractive(cmd, tailorLogFile); err != nil {
-		var stillFailing []string
-		for _, pkg := range toInstall {
-			if !pm.IsInstalled(pkg) {
-				stillFailing = append(stillFailing, pkg)
-			}
-		}
-		if len(stillFailing) > 0 {
-			logToFile(fmt.Sprintf("⚠️  Some interactive packages could not be installed: %v", stillFailing))
-		}
-		return append(missing, stillFailing...)
+		logToFile(fmt.Sprintf("⚠️  Interactive package installation command failed: %v", err))
 	}
-	return missing
+	installed, failed := pm.partitionInstalled(toInstall)
+	if len(failed) > 0 {
+		logToFile(fmt.Sprintf("⚠️  Some interactive packages could not be installed: %v", failed))
+	}
+	return PackageInstallResult{Installed: installed, Unavailable: missing, Failed: failed}
+}
+
+func (pm *aptPackageManager) partitionInstalled(packages []string) (installed []string, failed []string) {
+	for _, pkg := range packages {
+		if pm.IsInstalled(pkg) {
+			installed = append(installed, pkg)
+		} else {
+			failed = append(failed, pkg)
+		}
+	}
+	return installed, failed
 }
 
 func (pm *aptPackageManager) availablePackages() map[string]struct{} {

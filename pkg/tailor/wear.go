@@ -164,10 +164,13 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		ss.SetAction("%s: %s...", costumeActionTag, suit.Name)
 	}
 
-	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun, false, pm)
+	packageResult, err := applySuit(costumeDir, suit, dryRun, false, pm)
 	if err != nil {
 		return err
 	}
+	installedPackages := packageResult.Installed
+	unavailablePackages := packageResult.Unavailable
+	failedPackages := packageResult.Failed
 
 	costumePreseedSuffix := ""
 	if findPreseed(costumeDir) != "" {
@@ -233,9 +236,10 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					if ss != nil {
 						ss.SetAction("Accessory [%d/%d]: %s...", idx+1, len(suit.Accessories), accName)
 					}
-					accInstalled, accFailed, _ := applySuit(accDir, accSuit, dryRun, true, pm)
-					installedPackages = append(installedPackages, accInstalled...)
-					failedPackages = append(failedPackages, accFailed...)
+					accResult, _ := applySuit(accDir, accSuit, dryRun, true, pm)
+					installedPackages = append(installedPackages, accResult.Installed...)
+					unavailablePackages = append(unavailablePackages, accResult.Unavailable...)
+					failedPackages = append(failedPackages, accResult.Failed...)
 
 					// If the accessory defines nested accessories, apply them recursively
 					if len(accSuit.Accessories) > 0 {
@@ -256,9 +260,10 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 									if ss != nil {
 										ss.SetAction("  Nested accessory [%d/%d]: %s...", subIdx+1, len(accSuit.Accessories), subAccName)
 									}
-									subInstalled, subFailed, _ := applySuit(subAccDir, subAccSuit, dryRun, true, pm)
-									installedPackages = append(installedPackages, subInstalled...)
-									failedPackages = append(failedPackages, subFailed...)
+									subResult, _ := applySuit(subAccDir, subAccSuit, dryRun, true, pm)
+									installedPackages = append(installedPackages, subResult.Installed...)
+									unavailablePackages = append(unavailablePackages, subResult.Unavailable...)
+									failedPackages = append(failedPackages, subResult.Failed...)
 									if len(subAccSuit.FinalizeCmds) > 0 {
 										executeFinalizeCommands(subAccSuit.FinalizeCmds, subAccDir, subAccSuit.Name, dryRun)
 									}
@@ -277,21 +282,21 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 						accPreseedSuffix = " - Preseed applied"
 					}
 					accDetails := ""
-					if len(accInstalled) > 0 || len(accFailed) > 0 {
-						if len(accFailed) > 0 {
-							accDetails = fmt.Sprintf(" - Installed %d packages (%d failed)", len(accInstalled), len(accFailed))
+					if len(accResult.Installed) > 0 || len(accResult.Failed) > 0 {
+						if len(accResult.Failed) > 0 {
+							accDetails = fmt.Sprintf(" - Installed %d packages (%d failed)", len(accResult.Installed), len(accResult.Failed))
 						} else {
 							suffix := ""
 							if dryRun {
 								suffix = " (simulated)"
 							}
-							accDetails = fmt.Sprintf(" - Installed %d packages%s", len(accInstalled), suffix)
+							accDetails = fmt.Sprintf(" - Installed %d packages%s", len(accResult.Installed), suffix)
 						}
 					}
 
 					if ss != nil {
 						color := utils.ColorCyan
-						if len(accFailed) > 0 {
+						if len(accResult.Failed) > 0 {
 							color = utils.ColorYellow
 						}
 						ss.AddStep(fmt.Sprintf("%s--> [%d/%d] Accessory: %s%s%s%s", color, idx+1, len(suit.Accessories), accName, accDetails, accPreseedSuffix, utils.ColorReset))
@@ -356,6 +361,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	reportPath, reportErr := writeWearReport(wearReport{
 		CostumeName:   suit.Name,
 		Installed:     installedPackages,
+		Unavailable:   unavailablePackages,
 		FailedInstall: failedPackages,
 	})
 
@@ -514,9 +520,8 @@ func healAndRetryFailed(failed []string, pm PackageManager) []string {
 }
 
 // applySuit applies a costume or accessory definition with clean spinners
-func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm PackageManager) ([]string, []string, error) {
-	var installedPackages []string
-	var failedPackages []string
+func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm PackageManager) (PackageInstallResult, error) {
+	var result PackageInstallResult
 	ss := utils.GetSplitScreen()
 
 	// Preseed (debconf-set-selections)
@@ -561,15 +566,11 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 				ss.SetAction("Installing packages (%d packages)...", len(suit.Packages))
 			}
 		}
-		var failed []string
 		if dryRun {
 			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages: %v", len(suit.Packages), suit.Packages))
-			installedPackages = append(installedPackages, suit.Packages...)
+			result.Installed = append(result.Installed, suit.Packages...)
 		} else {
-			failed = pm.Install(suit.Packages, InstallMode{Retries: 3})
-			failedPackages = append(failedPackages, failed...)
-			installed := diffStr(suit.Packages, failed)
-			installedPackages = append(installedPackages, installed...)
+			result.merge(pm.Install(suit.Packages, InstallMode{Retries: 3}))
 		}
 	}
 
@@ -582,15 +583,11 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 				ss.SetAction("Installing packages without recommends (%d packages)...", len(suit.PackagesNoRecommends))
 			}
 		}
-		var failed []string
 		if dryRun {
 			logToFile(fmt.Sprintf("[DRY-RUN] Would install %d packages without recommends: %v", len(suit.PackagesNoRecommends), suit.PackagesNoRecommends))
-			installedPackages = append(installedPackages, suit.PackagesNoRecommends...)
+			result.Installed = append(result.Installed, suit.PackagesNoRecommends...)
 		} else {
-			failed = pm.Install(suit.PackagesNoRecommends, InstallMode{NoRecommends: true, Retries: 3})
-			failedPackages = append(failedPackages, failed...)
-			installed := diffStr(suit.PackagesNoRecommends, failed)
-			installedPackages = append(installedPackages, installed...)
+			result.merge(pm.Install(suit.PackagesNoRecommends, InstallMode{NoRecommends: true, Retries: 3}))
 		}
 	}
 
@@ -603,15 +600,11 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 				ss.SetAction("Configuring %d interactive packages...", len(suit.PackagesInteractive))
 			}
 		}
-		var failed []string
 		if dryRun {
 			logToFile(fmt.Sprintf("[DRY-RUN] Would configure %d interactive packages: %v", len(suit.PackagesInteractive), suit.PackagesInteractive))
-			installedPackages = append(installedPackages, suit.PackagesInteractive...)
+			result.Installed = append(result.Installed, suit.PackagesInteractive...)
 		} else {
-			failed = pm.Install(suit.PackagesInteractive, InstallMode{Interactive: true})
-			failedPackages = append(failedPackages, failed...)
-			installed := diffStr(suit.PackagesInteractive, failed)
-			installedPackages = append(installedPackages, installed...)
+			result.merge(pm.Install(suit.PackagesInteractive, InstallMode{Interactive: true}))
 		}
 	}
 
@@ -671,7 +664,7 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 		}
 	}
 
-	return installedPackages, failedPackages, nil
+	return result, nil
 }
 
 // applySysroot applies the sysroot/ or dirs/ filesystem overlay

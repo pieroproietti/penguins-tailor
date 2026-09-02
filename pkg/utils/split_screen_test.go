@@ -127,69 +127,102 @@ func TestDrawHeader_NoTopDivider(t *testing.T) {
 	}
 }
 
-func TestDashboardLayoutHasNoPersistentInteractiveConsole(t *testing.T) {
+func TestProgressiveRendererOnlyRewritesCurrentLine(t *testing.T) {
 	ss := &SplitScreen{
-		totalRows:   24,
-		totalCols:   80,
-		headerLines: []string{"  Costume: standard"},
-		headerRows:  2,
-		maxSteps:    2,
-		topHeight:   6,
-		completed:   []string{"[OK] Repositories configured"},
-		installed:   4,
-		unavailable: 1,
-		failed:      2,
+		active:    true,
+		totalCols: 80,
+		stopChan:  make(chan struct{}),
 	}
 
-	output := captureSplitScreenOutput(t, ss.drawFullLayout)
-	if strings.Contains(output, "INTERACTIVE CONSOLE") {
-		t.Errorf("dashboard unexpectedly contains interactive console: %q", output)
+	output := captureSplitScreenOutput(t, func() {
+		ss.SetAction("First action")
+		firstSince := ss.currentSince
+		time.Sleep(time.Millisecond)
+		ss.SetAction("Second action")
+		if !ss.currentSince.After(firstSince) {
+			t.Error("new action did not reset its timer")
+		}
+		ss.mu.Lock()
+		ss.renderCurrentLocked(asciiSpinnerFrames[1])
+		ss.mu.Unlock()
+		ss.AddStep("[OK] Second action")
+		ss.AddPackageStep("Accessory: base", 2, 1, 0)
+	})
+
+	for _, forbidden := range []string{"\033[2J", ";1H"} {
+		if strings.Contains(output, forbidden) {
+			t.Errorf("progressive output contains forbidden terminal control %q: %q", forbidden, output)
+		}
 	}
-	if !strings.Contains(output, "Packages: 4 installed · 1 unavailable · 2 failed") {
-		t.Errorf("dashboard missing package summary: %q", output)
+	if strings.Count(output, "\r\033[2K") < 4 {
+		t.Errorf("expected current-line rewrites, got %q", output)
 	}
-	if !strings.Contains(output, "Repositories configured") {
-		t.Errorf("dashboard missing completed step: %q", output)
+	for _, want := range []string{"[INFO] First action", "[OK] Second action", "Accessory: base — 2 installed · 1 unavailable · 0 failed"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("progressive output missing %q in %q", want, output)
+		}
+	}
+	if strings.Index(output, "[INFO] First action") > strings.Index(output, "[OK] Second action") {
+		t.Errorf("completed lines are not kept in order: %q", output)
 	}
 }
 
-func TestExecInteractiveRestoresDashboardState(t *testing.T) {
+func TestCloseFinalizesCurrentLineWithoutTerminalPadding(t *testing.T) {
 	ss := &SplitScreen{
-		active:        true,
-		totalRows:     24,
-		totalCols:     80,
-		headerLines:   []string{"  Costume: standard"},
-		headerRows:    2,
-		maxSteps:      2,
-		topHeight:     6,
-		completed:     []string{"[OK] Prior step"},
-		currentAction: "Installing packages",
-		installed:     4,
-		unavailable:   1,
-		failed:        2,
-		startTime:     time.Now(),
-		stopChan:      make(chan struct{}),
+		active:      true,
+		installed:   4,
+		unavailable: 1,
+		failed:      2,
+		stopChan:    make(chan struct{}),
 	}
 
+	output := captureSplitScreenOutput(t, func() {
+		ss.SetAction("Final operation")
+		ss.Close()
+	})
+	for _, forbidden := range []string{"\033[2J", ";1H", "\n\n"} {
+		if strings.Contains(output, forbidden) {
+			t.Errorf("Close() contains forbidden terminal output %q: %q", forbidden, output)
+		}
+	}
+	for _, want := range []string{
+		"[INFO] Final operation\n",
+		"Packages: 4 installed · 1 unavailable · 2 failed\n",
+		"\033[?25h",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Close() missing %q in %q", want, output)
+		}
+	}
+}
+
+func TestExecInteractiveResumesWithoutGlobalRedraw(t *testing.T) {
+	ss := &SplitScreen{
+		active:    true,
+		totalCols: 80,
+		stopChan:  make(chan struct{}),
+	}
 	logPath := filepath.Join(t.TempDir(), "interactive.log")
 	output := captureSplitScreenOutput(t, func() {
+		ss.SetAction("Awaiting interactive input")
 		if err := ss.ExecInteractive("printf 'interactive output\\n'", logPath); err != nil {
 			t.Fatalf("ExecInteractive() error = %v", err)
 		}
+		ss.SetAction("Continuing after interaction")
 	})
 
-	if strings.Count(output, "INTERACTIVE CONSOLE") != 1 {
-		t.Errorf("interactive heading count = %d, output = %q", strings.Count(output, "INTERACTIVE CONSOLE"), output)
-	}
-	for _, want := range []string{
-		"interactive output",
-		"Packages: 4 installed · 1 unavailable · 2 failed",
-		"Prior step",
-		"Installing packages",
-	} {
-		if !strings.Contains(output, want) {
-			t.Errorf("restored dashboard missing %q in %q", want, output)
+	for _, forbidden := range []string{"\033[2J", ";1H", "Costume:"} {
+		if strings.Contains(output, forbidden) {
+			t.Errorf("ExecInteractive() redrew terminal state with %q: %q", forbidden, output)
 		}
+	}
+	for _, want := range []string{"[INFO] Awaiting interactive input", "INTERACTIVE CONSOLE", "interactive output", "Continuing after interaction"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("ExecInteractive() missing %q in %q", want, output)
+		}
+	}
+	if strings.Index(output, "[INFO] Awaiting interactive input") > strings.Index(output, "INTERACTIVE CONSOLE") || strings.Index(output, "INTERACTIVE CONSOLE") > strings.Index(output, "interactive output") {
+		t.Errorf("interactive output is not progressive: %q", output)
 	}
 	if ss.interactive {
 		t.Error("interactive state remained enabled after command completion")

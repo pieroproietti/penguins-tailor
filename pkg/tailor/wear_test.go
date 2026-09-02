@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestWearRefreshesBeforeHeadersAndSuit(t *testing.T) {
+func TestWearRefreshesBeforeSuit(t *testing.T) {
 	tempDir := t.TempDir()
 	costumeDir := filepath.Join(tempDir, "v2", "costumes", "ordering")
 	if err := os.MkdirAll(costumeDir, 0755); err != nil {
@@ -21,15 +21,10 @@ func TestWearRefreshesBeforeHeadersAndSuit(t *testing.T) {
 	var events []string
 	pm := &orderedPackageManager{events: &events}
 	originalNewPackageManager := newWearPackageManager
-	originalEnsureHeaders := ensureWearHeaders
 	originalApplySuit := applyWearSuit
 	originalGetWardrobeRoot := getWearWardrobeRoot
 	originalGetWardrobeV2Dir := getWearWardrobeV2Dir
 	newWearPackageManager = func(string) (PackageManager, error) { return pm, nil }
-	ensureWearHeaders = func(bool) error {
-		events = append(events, "headers")
-		return nil
-	}
 	applyWearSuit = func(string, *Suit, bool, bool, PackageManager) (PackageInstallResult, error) {
 		events = append(events, "apply")
 		return PackageInstallResult{}, nil
@@ -38,7 +33,6 @@ func TestWearRefreshesBeforeHeadersAndSuit(t *testing.T) {
 	getWearWardrobeV2Dir = func() (string, error) { return filepath.Join(tempDir, "v2"), nil }
 	t.Cleanup(func() {
 		newWearPackageManager = originalNewPackageManager
-		ensureWearHeaders = originalEnsureHeaders
 		applyWearSuit = originalApplySuit
 		getWearWardrobeRoot = originalGetWardrobeRoot
 		getWearWardrobeV2Dir = originalGetWardrobeV2Dir
@@ -48,9 +42,34 @@ func TestWearRefreshesBeforeHeadersAndSuit(t *testing.T) {
 		t.Fatalf("Wear failed: %v", err)
 	}
 
-	want := []string{"refresh", "headers", "apply"}
+	want := []string{"refresh", "apply"}
 	if !slices.Equal(events, want) {
 		t.Fatalf("Wear lifecycle events = %v, want %v", events, want)
+	}
+}
+
+func TestApplySuitChecksHeadersAfterRepositoryUpdate(t *testing.T) {
+	var events []string
+	pm := &orderedPackageManager{events: &events}
+	originalEnsureHeaders := ensureWearHeaders
+	ensureWearHeaders = func(bool) error {
+		events = append(events, "headers")
+		return nil
+	}
+	t.Cleanup(func() { ensureWearHeaders = originalEnsureHeaders })
+
+	suit := &Suit{
+		Name:     "ordering",
+		Sequence: &Sequence{Repositories: &Repositories{Update: true}},
+		Packages: []string{"dkms-module"},
+	}
+	if _, err := applySuit(t.TempDir(), suit, false, false, pm); err != nil {
+		t.Fatalf("applySuit failed: %v", err)
+	}
+
+	want := []string{"refresh", "headers", "install"}
+	if !slices.Equal(events, want) {
+		t.Fatalf("applySuit lifecycle events = %v, want %v", events, want)
 	}
 }
 
@@ -96,7 +115,10 @@ func (pm *orderedPackageManager) Refresh() error {
 
 func (*orderedPackageManager) Upgrade(bool) error { return nil }
 
-func (*orderedPackageManager) Install([]string, InstallMode) PackageInstallResult {
+func (pm *orderedPackageManager) Install([]string, InstallMode) PackageInstallResult {
+	if pm.events != nil {
+		*pm.events = append(*pm.events, "install")
+	}
 	return PackageInstallResult{}
 }
 

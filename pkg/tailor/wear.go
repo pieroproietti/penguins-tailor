@@ -142,32 +142,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		utils.PrintBannerConfig(headerCfg)
 	}
 
-	// DKMS safety: ensure headers for running kernel are present
-	if ss != nil {
-		ss.SetAction("Checking kernel headers for DKMS...")
-		if err := ensureWearHeaders(dryRun); err != nil {
-			ss.AddStep(fmt.Sprintf("%s[WARN]%s Kernel headers verification completed with warnings", utils.ColorYellow, utils.ColorReset))
-		} else {
-			statusMsg := "Kernel headers verified"
-			if dryRun {
-				statusMsg += " (simulated)"
-			}
-			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
-		}
-	} else {
-		spHeaders := utils.NewSpinner("Checking kernel headers for DKMS...")
-		spHeaders.Start()
-		if err := ensureWearHeaders(dryRun); err != nil {
-			spHeaders.Warn("Kernel headers verification completed with warnings")
-		} else {
-			statusMsg := "Kernel headers verified"
-			if dryRun {
-				statusMsg += " (simulated)"
-			}
-			spHeaders.Success("%s", statusMsg)
-		}
-	}
-
 	SetLicensePromptPackages(suit.PackagesInteractive)
 
 	if ss != nil {
@@ -575,6 +549,12 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 		}
 	}
 
+	// DKMS safety: resolve the running kernel headers only after the costume's
+	// repositories and package metadata have been configured.
+	if !isAccessory {
+		checkKernelHeaders(dryRun, ss)
+	}
+
 	// Packages
 	if len(suit.Packages) > 0 {
 		if ss != nil {
@@ -683,6 +663,34 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 	}
 
 	return result, nil
+}
+
+func checkKernelHeaders(dryRun bool, ss *utils.SplitScreen) {
+	if ss != nil {
+		ss.SetAction("Checking kernel headers for DKMS...")
+		if err := ensureWearHeaders(dryRun); err != nil {
+			ss.AddStep(fmt.Sprintf("%s[WARN]%s Kernel headers verification completed with warnings", utils.ColorYellow, utils.ColorReset))
+		} else {
+			statusMsg := "Kernel headers verified"
+			if dryRun {
+				statusMsg += " (simulated)"
+			}
+			ss.AddStep(fmt.Sprintf("%s[OK]%s %s", utils.ColorGreen, utils.ColorReset, statusMsg))
+		}
+		return
+	}
+
+	spHeaders := utils.NewSpinner("Checking kernel headers for DKMS...")
+	spHeaders.Start()
+	if err := ensureWearHeaders(dryRun); err != nil {
+		spHeaders.Warn("Kernel headers verification completed with warnings")
+	} else {
+		statusMsg := "Kernel headers verified"
+		if dryRun {
+			statusMsg += " (simulated)"
+		}
+		spHeaders.Success("%s", statusMsg)
+	}
 }
 
 // applySysroot applies the sysroot/ or dirs/ filesystem overlay

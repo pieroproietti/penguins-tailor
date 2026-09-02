@@ -1,5 +1,30 @@
 # Changelog
 
+## Release Notes: penguins-tailor v26.9.2 - 2026-09-02
+This release strengthens the `tailor wear` package-management lifecycle, replaces the split-screen dashboard with clearer progressive terminal output, centralizes technical logging and detailed reports, and makes package results and repository-dependent kernel header handling more reliable.
+
+### 📦 Package Management & Distribution Safety
+* **Package Manager Abstraction**: Introduced a dedicated `PackageManager` interface and moved APT-specific refresh, upgrade, installation, healing, and installed-package checks into a separate implementation (`pkg/tailor/package-manager.go`, `pkg/tailor/package-manager-apt.go`).
+* **Distribution Validation**: Added explicit distribution-family checks before applying a costume and removed the obsolete AI prompt path from the wear pipeline.
+* **Portable Repository Upgrades**: Repository setup now delegates refresh and upgrade operations to the active package manager instead of invoking APT-specific upgrade logic directly.
+* **Early Metadata Refresh**: Package metadata is refreshed before wardrobe and costume setup, and a failed initial refresh now stops the operation before any package or kernel-header work begins.
+
+### 🔄 Repository & Kernel Header Ordering
+* **Repository-Aware DKMS Preparation**: Moved the running-kernel header check after costume repository configuration and metadata updates, while keeping it before package installation so newly configured sources can provide the required header packages.
+* **Single Main-Costume Check**: Kernel headers are verified once for the main costume rather than repeatedly for each accessory.
+* **Lifecycle Test Coverage**: Added tests covering metadata refresh failure, repository refresh, kernel-header verification, and package-installation ordering.
+
+### 🖥️ Progressive Wear Output
+* **Progressive Terminal Renderer**: Replaced the fixed split-screen dashboard with a progressive action stream that preserves completed steps and keeps the current action visibly updated.
+* **Clearer Costume Progress**: Added the main costume to the completed-step history, improved package counters, and removed the redundant top header divider.
+* **Report Review Flow**: The complete wear output remains visible before the interactive reset prompt and final summary, making warnings and command results easier to review.
+
+### 📝 Logging, Reports & Package Outcomes
+* **Central Technical Log**: Added a concurrency-safe structured logger and raw command-output capture under `/var/log/tailor/tailor.log`, consolidating operational diagnostics in one location (`pkg/utils/technical_logger.go`, `pkg/utils/exec.go`).
+* **Unavailable vs. Failed Packages**: Package results now distinguish packages absent from configured repositories from packages that were available but failed during installation.
+* **Detailed Wear Reports**: Timestamped reports under `/var/log/tailor/` now include separate Installed, Unavailable, and Could NOT be installed sections, with the final summary reporting the relevant totals and report path.
+* **Expanded Regression Tests**: Added coverage for package-manager behavior, technical logging, report contents, progressive output, and package-result aggregation.
+
 ## Release Notes: penguins-tailor v26.8.31 - 2026-08-31
 This release introduces the `tailor tools repo` command to manage official penguins-eggs repositories across diverse Linux distributions, refactors the execution lifecycle to defer costume finalization after accessory processing, introduces explicit distinction between sequence and finalization commands, adds an interactive terminal pause before displaying summary reports, and enables automatic reboot execution when required by a costume.
 

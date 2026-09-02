@@ -1,11 +1,126 @@
 package tailor
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 )
+
+func TestWearRefreshesBeforeHeadersAndSuit(t *testing.T) {
+	tempDir := t.TempDir()
+	costumeDir := filepath.Join(tempDir, "v2", "costumes", "ordering")
+	if err := os.MkdirAll(costumeDir, 0755); err != nil {
+		t.Fatalf("failed to create costume fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(costumeDir, "index.yaml"), []byte("name: ordering\n"), 0644); err != nil {
+		t.Fatalf("failed to write costume fixture: %v", err)
+	}
+
+	var events []string
+	pm := &orderedPackageManager{events: &events}
+	originalNewPackageManager := newWearPackageManager
+	originalEnsureHeaders := ensureWearHeaders
+	originalApplySuit := applyWearSuit
+	originalGetWardrobeRoot := getWearWardrobeRoot
+	originalGetWardrobeV2Dir := getWearWardrobeV2Dir
+	newWearPackageManager = func(string) (PackageManager, error) { return pm, nil }
+	ensureWearHeaders = func(bool) error {
+		events = append(events, "headers")
+		return nil
+	}
+	applyWearSuit = func(string, *Suit, bool, bool, PackageManager) (PackageInstallResult, error) {
+		events = append(events, "apply")
+		return PackageInstallResult{}, nil
+	}
+	getWearWardrobeRoot = func() (string, error) { return tempDir, nil }
+	getWearWardrobeV2Dir = func() (string, error) { return filepath.Join(tempDir, "v2"), nil }
+	t.Cleanup(func() {
+		newWearPackageManager = originalNewPackageManager
+		ensureWearHeaders = originalEnsureHeaders
+		applyWearSuit = originalApplySuit
+		getWearWardrobeRoot = originalGetWardrobeRoot
+		getWearWardrobeV2Dir = originalGetWardrobeV2Dir
+	})
+
+	if err := Wear("ordering", true, true, true, "", true); err != nil {
+		t.Fatalf("Wear failed: %v", err)
+	}
+
+	want := []string{"refresh", "headers", "apply"}
+	if !slices.Equal(events, want) {
+		t.Fatalf("Wear lifecycle events = %v, want %v", events, want)
+	}
+}
+
+func TestWearStopsWhenInitialRefreshFails(t *testing.T) {
+	originalNewPackageManager := newWearPackageManager
+	originalEnsureHeaders := ensureWearHeaders
+	originalApplySuit := applyWearSuit
+	refreshErr := errors.New("refresh failed")
+	newWearPackageManager = func(string) (PackageManager, error) {
+		return &orderedPackageManager{refreshErr: refreshErr}, nil
+	}
+	ensureWearHeaders = func(bool) error {
+		t.Fatal("kernel headers checked after failed initial refresh")
+		return nil
+	}
+	applyWearSuit = func(string, *Suit, bool, bool, PackageManager) (PackageInstallResult, error) {
+		t.Fatal("suit applied after failed initial refresh")
+		return PackageInstallResult{}, nil
+	}
+	t.Cleanup(func() {
+		newWearPackageManager = originalNewPackageManager
+		ensureWearHeaders = originalEnsureHeaders
+		applyWearSuit = originalApplySuit
+	})
+
+	err := Wear("ordering", true, true, true, "", true)
+	if !errors.Is(err, refreshErr) {
+		t.Fatalf("Wear error = %v, want refresh error", err)
+	}
+}
+
+type orderedPackageManager struct {
+	events     *[]string
+	refreshErr error
+}
+
+func (pm *orderedPackageManager) Refresh() error {
+	if pm.events != nil {
+		*pm.events = append(*pm.events, "refresh")
+	}
+	return pm.refreshErr
+}
+
+func (*orderedPackageManager) Upgrade(bool) error { return nil }
+
+func (*orderedPackageManager) Install([]string, InstallMode) PackageInstallResult {
+	return PackageInstallResult{}
+}
+
+func (*orderedPackageManager) IsInstalled(string) bool { return false }
+
+func (*orderedPackageManager) Heal() error { return nil }
+
+func TestNewPackageManager(t *testing.T) {
+	pm, err := newPackageManager("debian")
+	if err != nil {
+		t.Fatalf("newPackageManager(debian) failed: %v", err)
+	}
+	if _, ok := pm.(*aptPackageManager); !ok {
+		t.Fatalf("newPackageManager(debian) returned %T, want *aptPackageManager", pm)
+	}
+
+	pm, err = newPackageManager("archlinux")
+	if err == nil {
+		t.Fatal("newPackageManager(archlinux) succeeded, want unsupported error")
+	}
+	if pm != nil {
+		t.Fatalf("newPackageManager(archlinux) returned %T, want nil", pm)
+	}
+}
 
 type fakePackageManager struct {
 	installCalls []InstallMode

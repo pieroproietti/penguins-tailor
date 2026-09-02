@@ -12,6 +12,14 @@ import (
 	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 )
 
+var (
+	newWearPackageManager = newPackageManager
+	ensureWearHeaders     = ensureKernelHeaders
+	applyWearSuit         = applySuit
+	getWearWardrobeRoot   = getWardrobeRoot
+	getWearWardrobeV2Dir  = getWardrobeV2Dir
+)
+
 func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string, dryRun bool) error {
 	d := distro.NewDistro()
 	if d.FamilyID != "debian" && d.FamilyID != "archlinux" {
@@ -24,9 +32,15 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		return fmt.Errorf("must be run as root")
 	}
 
-	pm := newPackageManager()
+	pm, err := newWearPackageManager(d.FamilyID)
+	if err != nil {
+		return err
+	}
+	if err := pm.Refresh(); err != nil {
+		return fmt.Errorf("failed to refresh package metadata: %w", err)
+	}
 
-	root, err := getWardrobeRoot()
+	root, err := getWearWardrobeRoot()
 	if err != nil {
 		utils.LogError("Wardrobe root error: %v", err)
 		return err
@@ -46,7 +60,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		}
 	}
 
-	v2Dir, err := getWardrobeV2Dir()
+	v2Dir, err := getWearWardrobeV2Dir()
 	if err != nil {
 		utils.LogError("Wardrobe root error: %v", err)
 		return err
@@ -131,7 +145,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	// DKMS safety: ensure headers for running kernel are present
 	if ss != nil {
 		ss.SetAction("Checking kernel headers for DKMS...")
-		if err := ensureKernelHeaders(dryRun); err != nil {
+		if err := ensureWearHeaders(dryRun); err != nil {
 			ss.AddStep(fmt.Sprintf("%s[WARN]%s Kernel headers verification completed with warnings", utils.ColorYellow, utils.ColorReset))
 		} else {
 			statusMsg := "Kernel headers verified"
@@ -143,7 +157,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 	} else {
 		spHeaders := utils.NewSpinner("Checking kernel headers for DKMS...")
 		spHeaders.Start()
-		if err := ensureKernelHeaders(dryRun); err != nil {
+		if err := ensureWearHeaders(dryRun); err != nil {
 			spHeaders.Warn("Kernel headers verification completed with warnings")
 		} else {
 			statusMsg := "Kernel headers verified"
@@ -164,7 +178,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		ss.SetAction("%s: %s...", costumeActionTag, suit.Name)
 	}
 
-	packageResult, err := applySuit(costumeDir, suit, dryRun, false, pm)
+	packageResult, err := applyWearSuit(costumeDir, suit, dryRun, false, pm)
 	if err != nil {
 		return err
 	}
@@ -233,7 +247,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					if ss != nil {
 						ss.SetAction("Accessory [%d/%d]: %s...", idx+1, len(suit.Accessories), accName)
 					}
-					accResult, _ := applySuit(accDir, accSuit, dryRun, true, pm)
+					accResult, _ := applyWearSuit(accDir, accSuit, dryRun, true, pm)
 					installedPackages = append(installedPackages, accResult.Installed...)
 					unavailablePackages = append(unavailablePackages, accResult.Unavailable...)
 					failedPackages = append(failedPackages, accResult.Failed...)
@@ -260,7 +274,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 									if ss != nil {
 										ss.SetAction("  Nested accessory [%d/%d]: %s...", subIdx+1, len(accSuit.Accessories), subAccName)
 									}
-									subResult, _ := applySuit(subAccDir, subAccSuit, dryRun, true, pm)
+									subResult, _ := applyWearSuit(subAccDir, subAccSuit, dryRun, true, pm)
 									installedPackages = append(installedPackages, subResult.Installed...)
 									unavailablePackages = append(unavailablePackages, subResult.Unavailable...)
 									failedPackages = append(failedPackages, subResult.Failed...)

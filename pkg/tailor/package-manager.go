@@ -1,5 +1,7 @@
 package tailor
 
+import "fmt"
+
 // InstallMode controls package installation behavior requested by a costume.
 type InstallMode struct {
 	NoRecommends bool
@@ -31,9 +33,10 @@ type PackageManager interface {
 	Heal() error
 }
 
-// newPackageManager returns the current package manager implementation.
-// The APT implementation retains the existing fallback behavior when APT is
-// unavailable, including the Arch/Manjaro "under development" message.
-func newPackageManager() PackageManager {
-	return &aptPackageManager{}
+// newPackageManager returns the package manager implemented for distroFamily.
+func newPackageManager(distroFamily string) (PackageManager, error) {
+	if distroFamily == "debian" {
+		return &aptPackageManager{}, nil
+	}
+	return nil, fmt.Errorf("no package manager implemented for distribution family %q", distroFamily)
 }

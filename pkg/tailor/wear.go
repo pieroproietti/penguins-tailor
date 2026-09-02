@@ -489,7 +489,7 @@ func ensureKernelHeaders(dryRun bool) error {
 		return nil
 	}
 	logToFile(fmt.Sprintf("Ensuring kernel headers are present before DKMS installs: %s", pkgs))
-	return utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y "+pkgs, tailorLogFile)
+	return utils.ExecLogOnly("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y "+pkgs, tailorLogFile)
 }
 
 // healAndRetryFailed repairs the half-configured dpkg state and retries failed packages.
@@ -656,11 +656,11 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 					} else {
 						fullCmd = fmt.Sprintf("%s %s", relScript, suit.Name)
 					}
-					_ = utils.ExecTee(fullCmd, tailorLogFile)
+					_ = utils.ExecLogOnly(fullCmd, tailorLogFile)
 					continue
 				}
 			}
-			_ = utils.ExecTee(command, tailorLogFile)
+			_ = utils.ExecLogOnly(command, tailorLogFile)
 		}
 		if !isAccessory && ss != nil {
 			suffix := ""
@@ -696,7 +696,7 @@ func applySysroot(dir string, suitName string, dryRun bool, isAccessory bool) {
 			}
 		} else {
 			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
-			err := utils.ExecTee(cmd, tailorLogFile)
+			err := utils.ExecLogOnly(cmd, tailorLogFile)
 			if !isAccessory && ss != nil {
 				if err != nil {
 					ss.AddStep(fmt.Sprintf("%s[WARN]%s System configuration applied with warnings", utils.ColorYellow, utils.ColorReset))
@@ -748,11 +748,11 @@ func executeFinalizeCommands(cmds []string, dir string, suitName string, dryRun 
 				} else {
 					fullCmd = fmt.Sprintf("%s %s", relScript, suitName)
 				}
-				_ = utils.ExecTee(fullCmd, tailorLogFile)
+				_ = utils.ExecLogOnly(fullCmd, tailorLogFile)
 				continue
 			}
 		}
-		_ = utils.ExecTee(command, tailorLogFile)
+		_ = utils.ExecLogOnly(command, tailorLogFile)
 	}
 	if ss != nil {
 		suffix := ""
@@ -785,7 +785,7 @@ func copySkelToUser(dryRun bool) {
 
 	logToFile(fmt.Sprintf("Syncing /etc/skel -> %s", userHome))
 	cmd := fmt.Sprintf("rsync -a --no-o --no-g --chown=%s:%s /etc/skel/ %s/", targetUser, targetUser, userHome)
-	_ = utils.ExecTee(cmd, tailorLogFile)
+	_ = utils.ExecLogOnly(cmd, tailorLogFile)
 }
 
 func waitKeyPress(message string) {

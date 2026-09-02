@@ -13,14 +13,14 @@ import (
 type aptPackageManager struct{}
 
 func (pm *aptPackageManager) Refresh() error {
-	return utils.ExecTee("apt-get update", tailorLogFile)
+	return utils.ExecLogOnly("apt-get update", tailorLogFile)
 }
 
 func (pm *aptPackageManager) Upgrade(refresh bool) error {
 	if refresh {
 		_ = pm.Refresh()
 	}
-	return utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
+	return utils.ExecLogOnly("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' upgrade -y", tailorLogFile)
 }
 
 func (pm *aptPackageManager) Install(packages []string, mode InstallMode) []string {
@@ -40,8 +40,8 @@ func (pm *aptPackageManager) IsInstalled(pkg string) bool {
 
 // Heal preserves the recovery used after the DKMS retry phase.
 func (pm *aptPackageManager) Heal() error {
-	_ = utils.ExecTee("dpkg --configure -a", tailorLogFile)
-	_ = utils.ExecTee("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -f -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y", tailorLogFile)
+	_ = utils.ExecLogOnly("dpkg --configure -a", tailorLogFile)
+	_ = utils.ExecLogOnly("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=readline apt-get install -f -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' -y", tailorLogFile)
 	return nil
 }
 
@@ -106,7 +106,7 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 	pkgString := strings.Join(clean, " ")
 	cmd := fmt.Sprintf("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=%s apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' %s %s", debconfFrontend, flags, pkgString)
 	logToFile(fmt.Sprintf("Installing %d packages: %s", len(clean), pkgString))
-	if err := utils.ExecTee(cmd, tailorLogFile); err == nil {
+	if err := utils.ExecLogOnly(cmd, tailorLogFile); err == nil {
 		logToFile("✅ Packages installed.")
 		return missing
 	}
@@ -122,7 +122,7 @@ func (pm *aptPackageManager) install(packages []string, retries int, noRecommend
 				ss.SetAction("Retrying package: %s (attempt %d/%d)", pkg, attempt, retries)
 			}
 			singleCmd := fmt.Sprintf("UCF_FORCE_CONFFOLD=1 DEBIAN_FRONTEND=%s apt-get install -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' %s %s", debconfFrontend, flags, pkg)
-			if err := utils.ExecTee(singleCmd, tailorLogFile); err != nil {
+			if err := utils.ExecLogOnly(singleCmd, tailorLogFile); err != nil {
 				if pm.IsInstalled(pkg) {
 					logToFile(fmt.Sprintf("ℹ️  apt-get reported an error installing %s, but dpkg confirms it is installed correctly.", pkg))
 				} else {
@@ -221,8 +221,8 @@ func (pm *aptPackageManager) availablePackages() map[string]struct{} {
 }
 
 func (pm *aptPackageManager) healInstallationState() {
-	utils.Exec("DEBIAN_FRONTEND=noninteractive dpkg --configure -a --force-confold")
-	utils.Exec("DEBIAN_FRONTEND=noninteractive apt-get install -f -y")
+	_ = utils.ExecLogOnly("DEBIAN_FRONTEND=noninteractive dpkg --configure -a --force-confold", tailorLogFile)
+	_ = utils.ExecLogOnly("DEBIAN_FRONTEND=noninteractive apt-get install -f -y", tailorLogFile)
 
 	if isInteractiveTerminal() {
 		utils.ExecInteractive("DEBIAN_FRONTEND=readline dpkg --configure -a", tailorLogFile)
@@ -231,10 +231,10 @@ func (pm *aptPackageManager) healInstallationState() {
 	for _, p := range licensePromptPackages {
 		if !pm.IsInstalled(p) {
 			logToFile(fmt.Sprintf("⚠️  Purging half-configured license package %s so the rest of the system can heal...", p))
-			utils.Exec(fmt.Sprintf("DEBIAN_FRONTEND=noninteractive dpkg --purge --force-remove-reinstreq --force-depends %s", p))
+			_ = utils.ExecLogOnly(fmt.Sprintf("DEBIAN_FRONTEND=noninteractive dpkg --purge --force-remove-reinstreq --force-depends %s", p), tailorLogFile)
 		}
 	}
-	utils.Exec("DEBIAN_FRONTEND=noninteractive apt-get install -f -y")
+	_ = utils.ExecLogOnly("DEBIAN_FRONTEND=noninteractive apt-get install -f -y", tailorLogFile)
 }
 
 func normalizePkgName(name string) string {

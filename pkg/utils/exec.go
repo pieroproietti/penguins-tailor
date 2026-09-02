@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"time"
 )
 
@@ -57,6 +59,67 @@ func ExecTee(command string, logFilePath string) error {
 	cmd.Stdout = io.MultiWriter(os.Stdout, f)
 	cmd.Stderr = io.MultiWriter(os.Stderr, f)
 	return cmd.Run()
+}
+
+// ExecLogOnly executes a command while preserving its stdout and stderr in
+// the technical log without writing either stream to the terminal.
+func ExecLogOnly(command string, logFilePath string) error {
+	return ExecWithTechnicalLogger(command, NewTechnicalLogger(logFilePath))
+}
+
+// ExecWithTechnicalLogger executes a generic shell command and records its
+// lifecycle plus raw stdout/stderr in logger. It has no package-manager or
+// distribution-specific behavior.
+func ExecWithTechnicalLogger(command string, logger *TechnicalLogger) error {
+	ensureRootPath()
+	if logger == nil {
+		logger = NewTechnicalLogger("")
+	}
+
+	_ = logger.Info("command started", LogField{Key: "command", Value: command})
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdin = os.Stdin
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = logger.Error("command setup failed", LogField{Key: "command", Value: command}, LogField{Key: "error", Value: err.Error()})
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		_ = logger.Error("command setup failed", LogField{Key: "command", Value: command}, LogField{Key: "error", Value: err.Error()})
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		_ = logger.Error("command start failed", LogField{Key: "command", Value: command}, LogField{Key: "error", Value: err.Error()})
+		return err
+	}
+
+	var readers sync.WaitGroup
+	readOutput := func(stream string, r io.Reader) {
+		defer readers.Done()
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			_ = logger.CommandOutput(stream, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			_ = logger.Warn("command output read failed", LogField{Key: "stream", Value: stream}, LogField{Key: "error", Value: err.Error()})
+		}
+	}
+	readers.Add(2)
+	go readOutput("stdout", stdout)
+	go readOutput("stderr", stderr)
+
+	readers.Wait()
+	err = cmd.Wait()
+	exitCode := cmd.ProcessState.ExitCode()
+	if err != nil {
+		_ = logger.Error("command finished", LogField{Key: "exit_code", Value: strconv.Itoa(exitCode)}, LogField{Key: "error", Value: err.Error()})
+		return err
+	}
+	_ = logger.Info("command finished", LogField{Key: "exit_code", Value: strconv.Itoa(exitCode)})
+	return nil
 }
 
 // ExecInteractive executes an interactive command. If split screen is active,

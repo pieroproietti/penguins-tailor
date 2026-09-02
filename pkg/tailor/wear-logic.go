@@ -5,26 +5,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pieroproietti/penguins-tailor/pkg/distro"
+	"github.com/pieroproietti/penguins-tailor/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
 
-const tailorLogFile = "/var/log/tailor.log"
+const tailorLogFile = utils.DefaultTechnicalLogPath
 
+// logToFile remains as a compatibility wrapper while callers are migrated to
+// explicit log levels. New code should use TechnicalLogger directly.
 func logToFile(message string) {
-	logPath := tailorLogFile
-	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
-		// fallback
-	}
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	f.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, message))
+	_ = utils.NewTechnicalLogger(tailorLogFile).Info(message)
 }
 
 func findYaml(costumePath string) string {

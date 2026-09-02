@@ -34,7 +34,7 @@ func setupRepositories(repos *Repositories, suitName string, dryRun bool, pm Pac
 				logToFile(WarnPrefix(suitName) + "[DRY-RUN] Would execute repository command: " + command)
 				continue
 			}
-			if err := utils.ExecTee(command, tailorLogFile); err != nil {
+			if err := utils.ExecLogOnly(command, tailorLogFile); err != nil {
 				logToFile(WarnPrefix(suitName) + "repository command failed: " + command + ": " + err.Error())
 			}
 		}

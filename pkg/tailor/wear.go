@@ -156,9 +156,53 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 	SetLicensePromptPackages(suit.PackagesInteractive)
 
+	if ss != nil {
+		costumeActionTag := "Costume"
+		if isDirectAccessory {
+			costumeActionTag = "Accessory"
+		}
+		ss.SetAction("%s: %s...", costumeActionTag, suit.Name)
+	}
+
 	installedPackages, failedPackages, err := applySuit(costumeDir, suit, dryRun, false, pm)
 	if err != nil {
 		return err
+	}
+
+	costumePreseedSuffix := ""
+	if findPreseed(costumeDir) != "" {
+		costumePreseedSuffix = " - Preseed applied"
+	}
+	costumeDetails := ""
+	if len(installedPackages) > 0 || len(failedPackages) > 0 {
+		if len(failedPackages) > 0 {
+			costumeDetails = fmt.Sprintf(" - Installed %d packages (%d failed)", len(installedPackages), len(failedPackages))
+		} else {
+			suffix := ""
+			if dryRun {
+				suffix = " (simulated)"
+			}
+			costumeDetails = fmt.Sprintf(" - Installed %d packages%s", len(installedPackages), suffix)
+		}
+	}
+
+	costumeTag := "Costume"
+	if isDirectAccessory {
+		costumeTag = "Accessory"
+	}
+	displayName := suit.Name
+	if displayName == "" {
+		displayName = costumeName
+	}
+
+	if ss != nil {
+		color := utils.ColorCyan
+		if len(failedPackages) > 0 {
+			color = utils.ColorYellow
+		}
+		ss.AddStep(fmt.Sprintf("%s--> %s: %s%s%s%s", color, costumeTag, displayName, costumeDetails, costumePreseedSuffix, utils.ColorReset))
+	} else {
+		utils.PrintSubSection("-->", fmt.Sprintf("%s: %s%s%s", costumeTag, displayName, costumeDetails, costumePreseedSuffix))
 	}
 
 	if !noAcc && len(suit.Accessories) > 0 {
@@ -527,17 +571,6 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 			installed := diffStr(suit.Packages, failed)
 			installedPackages = append(installedPackages, installed...)
 		}
-		if !isAccessory && ss != nil {
-			if len(failed) > 0 {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.Packages)-len(failed), len(failed)))
-			} else {
-				suffix := ""
-				if dryRun {
-					suffix = " (simulated)"
-				}
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages%s", utils.ColorGreen, utils.ColorReset, len(suit.Packages), suffix))
-			}
-		}
 	}
 
 	// Packages No Recommends
@@ -559,17 +592,6 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 			installed := diffStr(suit.PackagesNoRecommends, failed)
 			installedPackages = append(installedPackages, installed...)
 		}
-		if !isAccessory && ss != nil {
-			if len(failed) > 0 {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Installed %d packages without recommends (%d failed)", utils.ColorYellow, utils.ColorReset, len(suit.PackagesNoRecommends)-len(failed), len(failed)))
-			} else {
-				suffix := ""
-				if dryRun {
-					suffix = " (simulated)"
-				}
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Installed %d packages without recommends%s", utils.ColorGreen, utils.ColorReset, len(suit.PackagesNoRecommends), suffix))
-			}
-		}
 	}
 
 	// Packages Interactive
@@ -590,17 +612,6 @@ func applySuit(dir string, suit *Suit, dryRun bool, isAccessory bool, pm Package
 			failedPackages = append(failedPackages, failed...)
 			installed := diffStr(suit.PackagesInteractive, failed)
 			installedPackages = append(installedPackages, installed...)
-		}
-		if !isAccessory && ss != nil {
-			if len(failed) > 0 {
-				ss.AddStep(fmt.Sprintf("%s[WARN]%s Some interactive packages could not be installed", utils.ColorYellow, utils.ColorReset))
-			} else {
-				suffix := ""
-				if dryRun {
-					suffix = " (simulated)"
-				}
-				ss.AddStep(fmt.Sprintf("%s[OK]%s Interactive packages configured%s", utils.ColorGreen, utils.ColorReset, suffix))
-			}
 		}
 	}
 

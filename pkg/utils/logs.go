@@ -83,7 +83,6 @@ const sectionDivider = "========================================================
 func PrintBannerConfig(cfg SplitScreenConfig) {
 	lines := FormatHeaderLines(cfg)
 	fmt.Println()
-	fmt.Printf("%s%s%s\n", colorize(ColorCyan), sectionDivider, colorize(ColorReset))
 	for _, l := range lines {
 		fmt.Printf("%s\n", l)
 	}

@@ -158,7 +158,7 @@ func StartSplitScreenConfig(cfg SplitScreenConfig) *SplitScreen {
 	}
 
 	headerLines := FormatHeaderLines(cfg)
-	headerRows := len(headerLines) + 2 // +2 for top and bottom divider lines
+	headerRows := len(headerLines) + 1 // +1 for bottom divider line
 
 	// Allarghiamo di un paio di righe la finestra dei passaggi completati
 	maxSteps := 6
@@ -227,7 +227,6 @@ func (ss *SplitScreen) drawHeader() {
 	}
 	divider := strings.Repeat("═", divWidth)
 
-	fmt.Printf("%s%s%s\n", colorize(ColorCyan), divider, colorize(ColorReset))
 	for _, line := range ss.headerLines {
 		fmt.Printf("%s\n", line)
 	}

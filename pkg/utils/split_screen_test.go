@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"bytes"
+	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -82,3 +85,43 @@ func TestFormatHeaderLines(t *testing.T) {
 		t.Errorf("expected icon in line 0 when explicitly provided, got %q", lines4[0])
 	}
 }
+
+func TestDrawHeader_NoTopDivider(t *testing.T) {
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	ss := &SplitScreen{
+		totalCols:   80,
+		headerLines: []string{"  Atelier: origin", "  Costume: standard"},
+	}
+	ss.drawHeader()
+
+	_ = w.Close()
+	os.Stdout = oldStdout
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	output := buf.String()
+
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines (2 header lines + 1 bottom divider), got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "Atelier: origin") {
+		t.Errorf("expected line 0 to contain Atelier: origin, got %q", lines[0])
+	}
+	if strings.Contains(lines[0], "═") {
+		t.Errorf("expected line 0 NOT to be a divider, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "Costume: standard") {
+		t.Errorf("expected line 1 to contain Costume: standard, got %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "═") {
+		t.Errorf("expected line 2 to be bottom divider, got %q", lines[2])
+	}
+}
+

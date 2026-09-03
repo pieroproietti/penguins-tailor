@@ -12,19 +12,20 @@ type WardrobeInfo struct {
 
 // Suit represents the index.yaml standard structure
 type Suit struct {
-	Name                 string        `yaml:"name"`
-	Description          string        `yaml:"description"`
-	Author               string        `yaml:"author"`
-	Release              string        `yaml:"release"`
-	Packages             []string      `yaml:"packages"`
-	Accessories          []string      `yaml:"accessories"`
-	Cmds                 []string      `yaml:"cmds"`
-	Distributions        []string      `yaml:"distributions"`
-	Sequence             *Sequence     `yaml:"sequence"`
-	Finalize             *Finalize     `yaml:"finalize"`
-	Reboot               bool          `yaml:"reboot"`
-	DisplayManagerNotice bool          `yaml:"display_manager_notice"`
-	PackagesNoRecommends []string      `yaml:"-"`
+	Name                 string    `yaml:"name"`
+	Description          string    `yaml:"description"`
+	Author               string    `yaml:"author"`
+	Release              string    `yaml:"release"`
+	Branding             string    `yaml:"branding"`
+	Packages             []string  `yaml:"packages"`
+	Accessories          []string  `yaml:"accessories"`
+	Cmds                 []string  `yaml:"cmds"`
+	Distributions        []string  `yaml:"distributions"`
+	Sequence             *Sequence `yaml:"sequence"`
+	Finalize             *Finalize `yaml:"finalize"`
+	Reboot               bool      `yaml:"reboot"`
+	DisplayManagerNotice bool      `yaml:"display_manager_notice"`
+	PackagesNoRecommends []string  `yaml:"-"`
 	// Populated by normalize() from Sequence.PackagesInteractive.
 	// These packages are installed without DEBIAN_FRONTEND=noninteractive
 	// so the user can respond to license prompts and debconf questions.

@@ -93,6 +93,11 @@ func Wear(costumeName string, linear bool, branch string, dryRun bool) error {
 	}
 
 	isDirectAccessory := strings.HasPrefix(costumeName, "accessories/") || (suit.Name != "" && !strings.Contains(costumeDir, "/costumes/"))
+	if !isDirectAccessory {
+		if err := validateBranding(v2Dir, suit.Branding); err != nil {
+			return err
+		}
+	}
 
 	origin := GetWardrobeOrigin()
 	activeBranch := GetWardrobeBranch()
@@ -315,6 +320,14 @@ func Wear(costumeName string, linear bool, branch string, dryRun bool) error {
 	// Costume Finalization commands
 	if len(suit.FinalizeCmds) > 0 {
 		executeFinalizeCommands(suit.FinalizeCmds, costumeDir, suit.Name, dryRun)
+	}
+
+	// Reconcile the active branding only when wearing a costume. Applying an
+	// accessory directly must not change the identity selected by the costume.
+	if !isDirectAccessory {
+		if err := applyBranding(v2Dir, suit.Branding, dryRun); err != nil {
+			return err
+		}
 	}
 
 	// User environment synchronization

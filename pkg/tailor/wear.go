@@ -20,8 +20,9 @@ var (
 	getWearWardrobeV2Dir  = getWardrobeV2Dir
 )
 
-func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch string, dryRun bool) error {
+func Wear(costumeName string, linear bool, branch string, dryRun bool) error {
 	d := distro.NewDistro()
+	systemIdentity := d.Identity()
 	if d.FamilyID != "debian" && d.FamilyID != "archlinux" {
 		utils.LogError("Distribution '%s' (family: %s) is not supported. Tailor currently supports Debian and Arch derivatives.", d.DistroID, d.FamilyID)
 		return fmt.Errorf("unsupported distribution family: %s", d.FamilyID)
@@ -31,7 +32,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		utils.LogError("'tailor wear' needs to install packages and write to system paths; run it as root (e.g. 'sudo tailor wear %s').", costumeName)
 		return fmt.Errorf("must be run as root")
 	}
-
 	pm, err := newWearPackageManager(d.FamilyID)
 	if err != nil {
 		return err
@@ -126,6 +126,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 	headerCfg := utils.SplitScreenConfig{
 		Atelier: origin,
+		System:  systemIdentity,
 		Costume: costumeLabel,
 		Branch:  activeBranch,
 		Notes:   notes,
@@ -193,20 +194,11 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 		utils.PrintSubSection("-->", fmt.Sprintf("%s: %s%s%s", costumeTag, displayName, costumeDetails, costumePreseedSuffix))
 	}
 
-	if !noAcc && len(suit.Accessories) > 0 {
+	if len(suit.Accessories) > 0 {
 		if ss == nil {
 			utils.PrintSection("👝", fmt.Sprintf("ACCESSORIES (%d items)", len(suit.Accessories)))
 		}
 		for idx, accName := range suit.Accessories {
-			if noFirm && (accName == "firmwares" || strings.Contains(accName, "firmware")) {
-				if ss != nil {
-					ss.AddStep(fmt.Sprintf("%s[INFO]%s Skipping firmware accessory '%s' (--no-firm)", utils.ColorYellow, utils.ColorReset, accName))
-				} else {
-					fmt.Printf("\n  %s[INFO] Skipping firmware accessory '%s' due to --no-firm flag%s\n", utils.ColorYellow, accName, utils.ColorReset)
-				}
-				continue
-			}
-
 			var accDir string
 			if strings.HasPrefix(accName, "./") || strings.HasPrefix(accName, "../") {
 				accDir = filepath.Join(costumeDir, accName)
@@ -232,9 +224,6 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 					// If the accessory defines nested accessories, apply them recursively
 					if len(accSuit.Accessories) > 0 {
 						for subIdx, subAccName := range accSuit.Accessories {
-							if noFirm && (subAccName == "firmwares" || strings.Contains(subAccName, "firmware")) {
-								continue
-							}
 							var subAccDir string
 							if strings.HasPrefix(subAccName, "./") || strings.HasPrefix(subAccName, "../") {
 								subAccDir = filepath.Join(accDir, subAccName)
@@ -352,6 +341,7 @@ func Wear(costumeName string, noAcc bool, noFirm bool, linear bool, branch strin
 
 	reportPath, reportErr := writeWearReport(wearReport{
 		CostumeName:   suit.Name,
+		System:        systemIdentity,
 		Installed:     installedPackages,
 		Unavailable:   unavailablePackages,
 		FailedInstall: failedPackages,

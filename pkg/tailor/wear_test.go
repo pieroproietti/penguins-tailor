@@ -38,7 +38,7 @@ func TestWearRefreshesBeforeSuit(t *testing.T) {
 		getWearWardrobeV2Dir = originalGetWardrobeV2Dir
 	})
 
-	if err := Wear("ordering", true, true, true, "", true); err != nil {
+	if err := Wear("ordering", true, "", true); err != nil {
 		t.Fatalf("Wear failed: %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestWearStopsWhenInitialRefreshFails(t *testing.T) {
 		applyWearSuit = originalApplySuit
 	})
 
-	err := Wear("ordering", true, true, true, "", true)
+	err := Wear("ordering", true, "", true)
 	if !errors.Is(err, refreshErr) {
 		t.Fatalf("Wear error = %v, want refresh error", err)
 	}

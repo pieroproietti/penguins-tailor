@@ -14,13 +14,14 @@ func TestFormatHeaderLines(t *testing.T) {
 	// Test 1: Config without icon (standard wear style)
 	cfg1 := SplitScreenConfig{
 		Atelier: "https://github.com/pieroproietti/penguins-wardrobe",
+		System:  "debian-bookworm",
 		Costume: "Costume: standard (v2.0)",
 		Branch:  "develop",
 		Notes:   "Standard penguin costume - Preseed applied",
 	}
 	lines1 := FormatHeaderLines(cfg1)
-	if len(lines1) != 3 {
-		t.Fatalf("expected 3 lines, got %d: %v", len(lines1), lines1)
+	if len(lines1) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines1), lines1)
 	}
 	if !strings.Contains(lines1[0], "Atelier:") || !strings.Contains(lines1[0], "https://github.com/pieroproietti/penguins-wardrobe (develop)") {
 		t.Errorf("line 0 unexpected: %q", lines1[0])
@@ -28,14 +29,17 @@ func TestFormatHeaderLines(t *testing.T) {
 	if strings.Contains(lines1[0], "👗") {
 		t.Errorf("expected no icon in line 0, got %q", lines1[0])
 	}
-	if !strings.Contains(lines1[1], "Costume:") || !strings.Contains(lines1[1], "standard (v2.0)") {
+	if !strings.Contains(lines1[1], "Distribution:") || !strings.Contains(lines1[1], "debian-bookworm") {
 		t.Errorf("line 1 unexpected: %q", lines1[1])
 	}
-	if !strings.Contains(lines1[2], "Standard penguin costume - Preseed applied") {
+	if !strings.Contains(lines1[2], "Costume:") || !strings.Contains(lines1[2], "standard (v2.0)") {
 		t.Errorf("line 2 unexpected: %q", lines1[2])
 	}
-	if strings.Contains(lines1[2], "Note:") || strings.Contains(lines1[2], "Nome:") {
-		t.Errorf("expected no Note:/Nome: label in line 2, got %q", lines1[2])
+	if !strings.Contains(lines1[3], "Standard penguin costume - Preseed applied") {
+		t.Errorf("line 3 unexpected: %q", lines1[3])
+	}
+	if strings.Contains(lines1[3], "Note:") || strings.Contains(lines1[3], "Nome:") {
+		t.Errorf("expected no Note:/Nome: label in line 3, got %q", lines1[3])
 	}
 
 	// Test 2: Default branch without icon

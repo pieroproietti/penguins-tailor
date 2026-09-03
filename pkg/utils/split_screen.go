@@ -40,6 +40,7 @@ func GetTerminalSize() (int, int) {
 type SplitScreenConfig struct {
 	Icon    string
 	Atelier string
+	System  string
 	Costume string
 	Branch  string
 	Notes   string
@@ -47,8 +48,9 @@ type SplitScreenConfig struct {
 
 // FormatHeaderLines constructs the header lines according to layout requirements:
 // Line 1: Atelier: <remote/origin> (with branch if not default)
-// Line 2: Costume: <costume> (or Accessory: <accessory>)
-// Line 3: <description>
+// Line 2: Distribution: <distribution>-<codename>
+// Line 3: Costume: <costume> (or Accessory: <accessory>)
+// Line 4: <description>
 func FormatHeaderLines(cfg SplitScreenConfig) []string {
 	var lines []string
 
@@ -69,7 +71,15 @@ func FormatHeaderLines(cfg SplitScreenConfig) []string {
 		lines = append(lines, line1)
 	}
 
-	// Line 2: Costume / Accessory
+	if cfg.System != "" {
+		indent := "  "
+		if icon != "" {
+			indent = "     "
+		}
+		lines = append(lines, fmt.Sprintf("%s%sDistribution:%s %s", indent, colorize(ColorBold+ColorWhite), colorize(ColorReset), cfg.System))
+	}
+
+	// Costume / Accessory
 	if cfg.Costume != "" {
 		var line2 string
 		indent := "  "

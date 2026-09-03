@@ -15,14 +15,10 @@ func TestWearCmdFlags(t *testing.T) {
 		t.Errorf("expected shorthand 'b' for --branch, got %q", branchFlag.Shorthand)
 	}
 
-	noAccFlag := cmd.Flags().Lookup("no-acc")
-	if noAccFlag == nil {
-		t.Fatal("expected --no-acc flag to exist")
-	}
-
-	noFirmFlag := cmd.Flags().Lookup("no-firm")
-	if noFirmFlag == nil {
-		t.Fatal("expected --no-firm flag to exist")
+	for _, removed := range []string{"no-acc", "no-firm"} {
+		if cmd.Flags().Lookup(removed) != nil {
+			t.Errorf("expected removed --%s flag not to exist", removed)
+		}
 	}
 
 	linearFlag := cmd.Flags().Lookup("linear")

@@ -19,6 +19,24 @@ type Distro struct {
 	DistroLike string
 }
 
+// Identity returns the distribution name used to identify generated artifacts.
+// It follows penguins-eggs naming rules: ID and VERSION_CODENAME are lower-case,
+// spaces become dashes, and VERSION_ID is used when no codename is available.
+func (d *Distro) Identity() string {
+	distroName := strings.ToLower(strings.ReplaceAll(d.DistroID, " ", "-"))
+	codeName := strings.ToLower(strings.ReplaceAll(d.CodenameID, " ", "-"))
+	if codeName == "" {
+		codeName = strings.ToLower(strings.ReplaceAll(d.ReleaseID, " ", "-"))
+	}
+	if codeName == "" {
+		return distroName
+	}
+	if distroName == "" {
+		return codeName
+	}
+	return distroName + "-" + codeName
+}
+
 func parseOsRelease() map[string]string {
 	info := make(map[string]string)
 	file, err := os.Open("/etc/os-release")

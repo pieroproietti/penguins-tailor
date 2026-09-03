@@ -11,7 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const tailorLogFile = utils.DefaultTechnicalLogPath
+var tailorLogFile = distroLogPath(distro.NewDistro().Identity())
+
+func distroLogPath(identity string) string {
+	if identity == "" {
+		return utils.DefaultTechnicalLogPath
+	}
+	return filepath.Join("/var/log/tailor", fmt.Sprintf("tailor-%s.log", identity))
+}
 
 // logToFile remains as a compatibility wrapper while callers are migrated to
 // explicit log levels. New code should use TechnicalLogger directly.

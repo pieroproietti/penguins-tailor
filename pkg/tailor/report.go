@@ -15,6 +15,7 @@ import (
 // wearReport holds the full, per-package outcome of a tailor wear run.
 type wearReport struct {
 	CostumeName   string
+	System        string
 	Installed     []string
 	Unavailable   []string
 	FailedInstall []string
@@ -34,12 +35,13 @@ func writeWearReport(r wearReport) (string, error) {
 			reportDir = os.TempDir()
 		}
 	}
-	path := filepath.Join(reportDir, fmt.Sprintf("tailor-report-%s.txt", time.Now().Format("20060102-150405")))
+	filename := wearReportFilename(r.System, time.Now())
+	path := filepath.Join(reportDir, filename)
 
 	f, err := os.Create(path)
 	if err != nil {
 		reportDir = os.TempDir()
-		path = filepath.Join(reportDir, fmt.Sprintf("tailor-report-%s.txt", time.Now().Format("20060102-150405")))
+		path = filepath.Join(reportDir, filename)
 		f, err = os.Create(path)
 		if err != nil {
 			return "", err
@@ -67,6 +69,13 @@ func writeWearReport(r wearReport) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+func wearReportFilename(identity string, timestamp time.Time) string {
+	if identity == "" {
+		return fmt.Sprintf("tailor-report-%s.txt", timestamp.Format("20060102-150405"))
+	}
+	return fmt.Sprintf("tailor-report-%s-%s.txt", identity, timestamp.Format("20060102-150405"))
 }
 
 // diffStr returns the elements of all that are not present in exclude.

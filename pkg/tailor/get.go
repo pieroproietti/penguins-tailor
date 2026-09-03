@@ -36,6 +36,7 @@ func Get(repoURL string, branch string) error {
 	if _, err := os.Stat(root); os.IsNotExist(err) {
 		if branch != "" {
 			utils.LogNormal("Downloading costumes repository from %s (branch: %s)...", targetURL, branch)
+
 			cmd := fmt.Sprintf("git clone -b %s %s %s", branch, targetURL, root)
 			if err := utils.Exec(cmd); err != nil {
 				return err

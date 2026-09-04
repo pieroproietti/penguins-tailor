@@ -1,5 +1,19 @@
 # Changelog
 
+## Release Notes: penguins-tailor v26.9.4 - 2026-09-04
+This release adds costume-provided branding installation, makes technical logs and wear reports distribution-specific, and ensures the installed branding tree remains accessible with consistent root permissions.
+
+### 🎨 Costume Branding
+* **Declarative Branding Selection**: Costumes can now select a branding bundle through the `branding` field in `index.yaml`.
+* **Atomic Branding Installation**: The selected bundle is validated, copied into `/etc/penguins-eggs.d/branding`, and replaces any previously active branding without retaining the source bundle directory.
+* **Safe Cleanup and Dry Runs**: An empty selection removes stale branding, while dry-run mode reports the intended operation without changing the target.
+* **Consistent Permissions**: The active branding root is normalized to `0755`, preventing restrictive temporary-directory permissions from making installed assets inaccessible.
+
+### 🧰 Distribution-Specific Diagnostics
+* **Identifiable Technical Logs**: Wear logs include the detected distribution identity in their filenames, keeping diagnostics distinct across systems.
+* **Identifiable Wear Reports**: Generated reports likewise include the distribution identity while preserving the legacy filename format when no identity is available.
+* **Expanded Regression Coverage**: Added tests for distribution identity detection, log and report naming, branding validation, replacement, cleanup, dry-run behavior, and permissions.
+
 ## Release Notes: penguins-tailor v26.9.2 - 2026-09-02
 This release strengthens the `tailor wear` package-management lifecycle, replaces the split-screen dashboard with clearer progressive terminal output, centralizes technical logging and detailed reports, and makes package results and repository-dependent kernel header handling more reliable.
 

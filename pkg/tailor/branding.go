@@ -68,6 +68,9 @@ func applyBranding(v2Dir, name string, dryRun bool) error {
 		return fmt.Errorf("unable to prepare branding: %w", err)
 	}
 	defer os.RemoveAll(tmpRoot)
+	if err := os.Chmod(tmpRoot, 0755); err != nil {
+		return fmt.Errorf("unable to set branding permissions: %w", err)
+	}
 
 	if err := copyBrandingTree(source, tmpRoot); err != nil {
 		return fmt.Errorf("unable to copy branding %q: %w", name, err)

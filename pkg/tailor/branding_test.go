@@ -37,6 +37,13 @@ func TestApplyBrandingReplacesPreviousSelection(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(target, "quirinux")); !os.IsNotExist(err) {
 		t.Fatalf("branding name directory must not be replicated: %v", err)
 	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0755 {
+		t.Fatalf("branding root permissions = %04o, want 0755", info.Mode().Perm())
+	}
 	if _, err := os.Stat(filepath.Join(target, "theme")); !os.IsNotExist(err) {
 		t.Fatalf("legacy theme directory must not be replicated: %v", err)
 	}

@@ -1,11 +1,4 @@
 # Binaries
-/tailor
-/penguins-tailor
-/wardrobe
-/penguins-wardrobe
-/bin/
-/dist/
-
 # Packages & Build Artifacts
 *.deb
 *.rpm

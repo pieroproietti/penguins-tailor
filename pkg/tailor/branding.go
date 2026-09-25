@@ -39,14 +39,7 @@ func validateBranding(v2Dir, name string) error {
 func applyBranding(v2Dir, name string, dryRun bool) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		if dryRun {
-			logToFile(fmt.Sprintf("[DRY-RUN] Would remove active branding from %s", brandingRoot))
-			return nil
-		}
-		if err := os.RemoveAll(brandingRoot); err != nil {
-			return fmt.Errorf("unable to remove active branding %s: %w", brandingRoot, err)
-		}
-		return nil
+		return fmt.Errorf("CRITICAL: branding name is empty in index.yaml. Cannot apply branding.")
 	}
 
 	if err := validateBranding(v2Dir, name); err != nil {

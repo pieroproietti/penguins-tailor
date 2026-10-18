@@ -704,7 +704,7 @@ func applySysroot(dir string, suitName string, dryRun bool, isAccessory bool) {
 				ss.AddStep(fmt.Sprintf("%s[OK]%s System configuration applied (simulated)", utils.ColorGreen, utils.ColorReset))
 			}
 		} else {
-			cmd := fmt.Sprintf("rsync -aAX %s/ /", sysrootPath)
+			cmd := sysrootRsyncCmd(sysrootPath, "/")
 			err := utils.ExecLogOnly(cmd, tailorLogFile)
 			if !isAccessory && ss != nil {
 				if err != nil {
